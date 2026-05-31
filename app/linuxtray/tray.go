@@ -147,11 +147,11 @@ func goTrayCallback(id C.int) {
 
 type Tray struct {
 	indicator      *C.AppIndicator
-	menu          *C.GtkMenu
-	app           AppCallbacks
-	iconDir       string
+	menu           *C.GtkMenu
+	app            AppCallbacks
+	iconDir        string
 	updateNotified bool
-	mu            sync.Mutex
+	mu             sync.Mutex
 }
 
 const (
