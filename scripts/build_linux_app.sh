@@ -14,6 +14,10 @@ CGO_CXXFLAGS="${CGO_CXXFLAGS:-}"
 VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo '0.0.0')}"
 LDFLAGS="-X github.com/ollama/ollama/version.Version=${VERSION} -X github.com/ollama/ollama/app/version.Version=${VERSION}"
 
+# Path to linuxdeploy (auto-bundles shared libs)
+LINUXDEPLOY="${LINUXDEPLOY:-$(command -v linuxdeploy || echo ~/.local/bin/linuxdeploy)}"
+LINGPU="${LINUXDEPLOY_GTK_PLUGIN:-$(command -v linuxdeploy-plugin-gtk.sh || echo ~/.local/bin/linuxdeploy-plugin-gtk.sh)}"
+
 echo "=== Building Ollama Linux App ==="
 if [ -n "$DIST_DIR" ]; then
     echo "Using pre-built dist directory: $DIST_DIR"
@@ -49,12 +53,11 @@ if [ -n "$DIST_DIR" ]; then
     cp "$LLAMA_SERVER_SRC" "$APPDIR/usr/lib/ollama/llama-server"
     chmod +x "$APPDIR/usr/lib/ollama/llama-server"
 
-    # Copy any shared runtime libraries (CUDA, ROCm, Vulkan, etc.)
     if [ -d "$DIST_DIR/lib/ollama" ]; then
         for f in "$DIST_DIR/lib/ollama/"*; do
             base="$(basename "$f")"
             case "$base" in
-                llama-server) ;; # already copied
+                llama-server) ;;
                 *) cp -a "$f" "$APPDIR/usr/lib/ollama/" ;;
             esac
         done
@@ -66,7 +69,6 @@ else
         echo "  Symlinked ollama as llama-server (same binary handles both roles)" >&2
     else
         echo "  llama-server not available. AppImage will fall back to system PATH." >&2
-        echo "  For release builds, set DIST_DIR=dist/linux-amd64 to use pre-built artifacts" >&2
     fi
 fi
 
@@ -77,9 +79,11 @@ mkdir -p "$APPDIR/usr/lib/ollama"
 mkdir -p "$APPDIR/usr/share/applications"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/22x22/apps"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/scalable/apps"
 
-# Copy .desktop file
+# Copy .desktop file (linuxdeploy reads this for metadata)
 cp "$ROOT_DIR/app/linux/com.ollama.Ollama.desktop" "$APPDIR/usr/share/applications/"
+cp "$ROOT_DIR/app/linux/com.ollama.Ollama.desktop" "$APPDIR/"
 
 # Copy icons
 cp "$ROOT_DIR/app/assets/ollama.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/ollama.png"
@@ -87,27 +91,34 @@ cp "$ROOT_DIR/app/assets/ollama-tray.png" "$APPDIR/usr/share/icons/hicolor/22x22
 cp "$ROOT_DIR/app/assets/ollama-tray-dark.png" "$APPDIR/usr/share/icons/hicolor/22x22/apps/ollama-tray-dark.png"
 cp "$ROOT_DIR/app/assets/ollama-update.png" "$APPDIR/usr/share/icons/hicolor/22x22/apps/ollama-update.png"
 cp "$ROOT_DIR/app/assets/ollama-update-dark.png" "$APPDIR/usr/share/icons/hicolor/22x22/apps/ollama-update-dark.png"
+cp "$ROOT_DIR/app/assets/ollama.png" "$APPDIR/"
 
-# Create AppRun
+# Create AppRun (basic one; linuxdeploy may overlay it)
 cat > "$APPDIR/AppRun" << 'APPRUN'
 #!/bin/bash
 SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
 export PATH="${HERE}/usr/bin:${PATH}"
 export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH:-}"
 exec "${HERE}/usr/bin/ollama-app" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
-# Copy .desktop to AppDir root
-cp "$APPDIR/usr/share/applications/com.ollama.Ollama.desktop" "$APPDIR/"
-
-# Copy icon to AppDir root
-cp "$ROOT_DIR/app/assets/ollama.png" "$APPDIR/"
-
-# Step 6: Create AppImage (if appimagetool is available)
-if command -v appimagetool &>/dev/null; then
-    echo "--- Creating AppImage ---"
+# Step 6: Bundle shared libraries using linuxdeploy
+if [ -x "$LINUXDEPLOY" ]; then
+    echo "--- Bundling shared library dependencies ---"
+    LDP_PLUGIN="$LINGPU" "$LINUXDEPLOY" \
+        --appdir "$APPDIR" \
+        --desktop-file "$APPDIR/usr/share/applications/com.ollama.Ollama.desktop" \
+        --icon-file "$APPDIR/ollama.png" \
+        --output appimage \
+        2>&1
+    mv "$APPDIR/../Ollama-x86_64.AppImage" "$BUILD_DIR/ollama-linux-amd64.AppImage" 2>/dev/null || true
+    echo "=== AppImage created: $BUILD_DIR/ollama-linux-amd64.AppImage ==="
+elif command -v appimagetool &>/dev/null; then
+    echo "--- linuxdeploy not found; using appimagetool (no bundled libs) ---"
+    echo "WARNING: AppImage will require system GTK/WebKit libs." >&2
     ARCH_TAG="$(uname -m)"
     case "$ARCH_TAG" in
         x86_64) ARCH_FILENAME="amd64" ;;
@@ -116,8 +127,6 @@ if command -v appimagetool &>/dev/null; then
     ARCH="$ARCH_TAG" appimagetool "$APPDIR" "$BUILD_DIR/ollama-linux-${ARCH_FILENAME}.AppImage"
     echo "=== AppImage created: $BUILD_DIR/ollama-linux-${ARCH_FILENAME}.AppImage ==="
 else
-    echo "=== appimagetool not found. AppDir created at $APPDIR ==="
-    echo "=== Install appimagetool to create an AppImage: ==="
-    echo "    wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool"
-    echo "    chmod +x /usr/local/bin/appimagetool"
+    echo "=== AppDir created at $APPDIR ==="
+    echo "=== Install linuxdeploy or appimagetool to create AppImage ==="
 fi
