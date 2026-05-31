@@ -265,21 +265,21 @@ trap install_success EXIT
 # Everything from this point onwards is optional.
 
 configure_systemd() {
-    if id ollama >/dev/null 2>&1; then
+    if ! id ollama >/dev/null 2>&1; then
         status "Creating ollama user..."
-        $SUDO useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama
+        $SUDO useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama 2>/dev/null || true
     fi
     if getent group render >/dev/null 2>&1; then
         status "Adding ollama user to render group..."
-        $SUDO usermod -a -G render ollama
+        $SUDO usermod -a -G render ollama 2>/dev/null || true
     fi
     if getent group video >/dev/null 2>&1; then
         status "Adding ollama user to video group..."
-        $SUDO usermod -a -G video ollama
+        $SUDO usermod -a -G video ollama 2>/dev/null || true
     fi
 
     status "Adding current user to ollama group..."
-    $SUDO usermod -a -G ollama $(whoami)
+    $SUDO usermod -a -G ollama $(whoami) 2>/dev/null || true
 
     status "Creating ollama systemd service..."
     cat <<EOF | $SUDO tee /etc/systemd/system/ollama.service >/dev/null
