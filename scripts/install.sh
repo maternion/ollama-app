@@ -129,34 +129,26 @@ if [ -n "$NEEDS" ]; then
     exit 1
 fi
 
-# Function to download and extract with fallback from zst to tgz
 download_and_extract() {
     local url_base="$1"
     local dest_dir="$2"
     local filename="$3"
 
-    # Check if .tar.zst is available
-    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst" >/dev/null 2>&1; then
-        # zst file exists - check if we have zstd tool
-        if ! available zstd; then
-            error "This version requires zstd for extraction. Please install zstd and try again:
-  - Debian/Ubuntu: sudo apt-get install zstd
-  - RHEL/CentOS/Fedora: sudo dnf install zstd
-  - Arch: sudo pacman -S zstd"
-        fi
-
+    if available zstd; then
         status "Downloading ${filename}.tar.zst"
-        curl --fail --show-error --location --progress-bar \
+        if curl --fail --show-error --location --progress-bar \
             "${url_base}/${filename}.tar.zst" | \
-            zstd -d | $SUDO tar -xf - -C "${dest_dir}"
-        return 0
+            zstd -d | $SUDO tar -xf - -C "${dest_dir}" 2>/dev/null; then
+            return 0
+        fi
     fi
 
-    # Fall back to .tgz for older versions
     status "Downloading ${filename}.tgz"
     curl --fail --show-error --location --progress-bar \
         "${url_base}/${filename}.tgz" | \
-        $SUDO tar -xzf - -C "${dest_dir}"
+        $SUDO tar -xzf - -C "${dest_dir}" 2>/dev/null || {
+        error "Failed to download ollama for linux-${ARCH}. Check your internet connection."
+    }
 }
 
 for BINDIR in /usr/local/bin /usr/bin /bin; do
