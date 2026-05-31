@@ -41,6 +41,10 @@ esac
 
 VER_PARAM="${OLLAMA_VERSION:+?version=$OLLAMA_VERSION}"
 
+# Base download URL — set OLLAMA_REPO to your GitHub fork to change where assets are downloaded from
+OLLAMA_REPO="${OLLAMA_REPO:-maternion/ollama-app}"
+OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-https://github.com/$OLLAMA_REPO/releases/latest/download}"
+
 ###########################################
 # macOS
 ###########################################
@@ -55,7 +59,7 @@ if [ "$OS" = "Darwin" ]; then
         exit 1
     fi
 
-    DOWNLOAD_URL="https://ollama.com/download/Ollama-darwin.zip${VER_PARAM}"
+    DOWNLOAD_URL="${OLLAMA_BASE_URL}/Ollama-darwin.zip${VER_PARAM}"
 
     if pgrep -x Ollama >/dev/null 2>&1; then
         status "Stopping running Ollama instance..."
@@ -168,7 +172,7 @@ fi
 status "Installing ollama to $OLLAMA_INSTALL_DIR"
 $SUDO install -o0 -g0 -m755 -d $BINDIR
 $SUDO install -o0 -g0 -m755 -d "$OLLAMA_INSTALL_DIR/lib/ollama"
-download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}"
+download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}"
 
 if [ "$OLLAMA_INSTALL_DIR/bin/ollama" != "$BINDIR/ollama" ] ; then
     status "Making ollama accessible in the PATH in $BINDIR"
@@ -178,9 +182,9 @@ fi
 # Check for NVIDIA JetPack systems with additional downloads
 if [ -f /etc/nv_tegra_release ] ; then
     if grep R36 /etc/nv_tegra_release > /dev/null ; then
-        download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack6"
+        download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack6"
     elif grep R35 /etc/nv_tegra_release > /dev/null ; then
-        download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack5"
+        download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack5"
     else
         warning "Unsupported JetPack version detected.  GPU may not be supported"
     fi
@@ -197,7 +201,7 @@ configure_app() {
         return 0
     fi
 
-    APPIMAGE_URL="https://ollama.com/download/ollama-linux-${ARCH}.AppImage"
+    APPIMAGE_URL="${OLLAMA_BASE_URL}/ollama-linux-${ARCH}.AppImage"
     status "Downloading Ollama desktop app..."
     if ! curl --fail --show-error --location --progress-bar \
         -o "$TEMP_DIR/ollama-app.AppImage" "$APPIMAGE_URL"; then
@@ -371,7 +375,7 @@ if ! check_gpu lspci nvidia && ! check_gpu lshw nvidia && ! check_gpu lspci amdg
 fi
 
 if check_gpu lspci amdgpu || check_gpu lshw amdgpu; then
-    download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-rocm"
+    download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-rocm"
 
     install_success
     status "AMD GPU ready."

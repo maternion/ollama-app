@@ -41,6 +41,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -128,23 +129,35 @@ func handleExistingInstance(startHidden bool) {
 	}
 	lockFile := filepath.Join(lockDir, "ollama.lock")
 
-	if _, err := os.Stat(lockFile); err == nil {
-		data, err := os.ReadFile(lockFile)
-		if err == nil {
-			var pid int
-			if _, err := fmt.Sscanf(string(data), "%d", &pid); err == nil && pid > 0 {
-				if proc, err := os.FindProcess(pid); err == nil {
-					if err := proc.Signal(syscall.Signal(0)); err == nil {
-						slog.Info("existing instance found, exiting", "pid", pid)
-						os.Exit(0)
-					}
+	data, err := os.ReadFile(lockFile)
+	if err == nil {
+		var pid int
+		if _, err := fmt.Sscanf(string(data), "%d", &pid); err == nil && pid > 0 {
+			if proc, err := os.FindProcess(pid); err == nil && proc.Signal(syscall.Signal(0)) == nil {
+				if ollamaPidRunning(pid) {
+					slog.Info("existing instance found, exiting", "pid", pid)
+					os.Exit(0)
 				}
 			}
 		}
 	}
 
+	os.Remove(lockFile)
 	os.MkdirAll(lockDir, 0o700)
-	os.WriteFile(lockFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600)
+	if err := os.WriteFile(lockFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
+		slog.Warn("failed to write lock file", "error", err)
+	}
+}
+
+func ollamaPidRunning(pid int) bool {
+	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	if err != nil {
+		return false
+	}
+	comm := strings.TrimSpace(string(output))
+	// The running process could be "ollama-app", "Ollama" (AppImage runtime),
+	// or have a path prefix. Check the base name.
+	return comm != "" && strings.Contains(comm, "ollama")
 }
 
 func installSymlink() {}
@@ -237,7 +250,7 @@ func installAutostart() {
 		return
 	}
 
-	desktopEntry := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s hidden\nIcon=ollama\nTerminal=false\nCategories=Development;AI;\nStartupWMClass=ollama\n", exe)
+	desktopEntry := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s hidden\nIcon=ollama\nTerminal=false\nCategories=Development;AI;\nMimeType=x-scheme-handler/ollama;\nStartupWMClass=ollama\n", exe)
 
 	if err := os.MkdirAll(autostartDir, 0o755); err != nil {
 		slog.Warn("unable to create autostart directory", "error", err)
