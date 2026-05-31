@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || linux
 
 package server
 
@@ -10,15 +10,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 )
 
 var (
-	pidFile       = filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Ollama", "ollama.pid")
+	pidFile       string
 	serverLogPath = filepath.Join(os.Getenv("HOME"), ".ollama", "logs", "server.log")
 )
+
+func init() {
+	switch runtime.GOOS {
+	case "darwin":
+		pidFile = filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Ollama", "ollama.pid")
+	default:
+		pidFile = filepath.Join(os.Getenv("HOME"), ".ollama", "ollama.pid")
+	}
+}
 
 func commandContext(ctx context.Context, name string, arg ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, name, arg...)

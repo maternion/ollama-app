@@ -416,6 +416,47 @@ jobs:
             dist/*.ps1
             dist/OllamaSetup.exe
 
+  linux-app:
+    runs-on: ubuntu-latest
+    environment: release
+    needs: [setup-environment]
+    env:
+      GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
+      VERSION: ${{ needs.setup-environment.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libayatana-appindicator3-dev libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            LLAMA_CPP_VERSION
+            MLX_VERSION
+            MLX_C_VERSION
+      - name: Build llama-server (CPU only for AppImage)
+        run: |
+          cmake -S . -B build/linux-app-superbuild
+          CMAKE_BUILD_PARALLEL_LEVEL=$(nproc) cmake --build build/linux-app-superbuild --target ollama-local -- -l $(nproc)
+      - name: Build Linux app
+        run: ./scripts/build_linux_app.sh
+        env:
+          DIST_DIR: build/linux-app-superbuild
+      - name: Log build results
+        run: |
+          ls -l dist/linux-app/
+      - name: Stage AppImage for release
+        run: |
+          cp dist/linux-app/ollama-linux-*.AppImage dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-linux-app
+          path: dist/ollama-linux-*.AppImage
+
   linux-depends:
     strategy:
       matrix:
@@ -684,7 +725,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: release
-    needs: [darwin-build, windows-app, docker-build-push]
+    needs: [darwin-build, windows-app, linux-app, docker-build-push]
     permissions:
       contents: write
     env:
@@ -708,6 +749,7 @@ jobs:
             dist/OllamaSetup.exe
             dist/install.ps1
             dist/install.sh
+            dist/ollama-linux-amd64.AppImage
             dist/ollama-windows-amd64.zip
             dist/ollama-windows-arm64.zip
           )
@@ -739,7 +781,7 @@ jobs:
       - name: Upload release artifacts
         run: |
           pids=()
-          for payload in dist/*.txt dist/*.zip dist/*.tgz dist/*.tar.zst dist/*.exe dist/*.dmg dist/*.ps1 dist/*.sh ; do
+          for payload in dist/*.txt dist/*.zip dist/*.tgz dist/*.tar.zst dist/*.exe dist/*.dmg dist/*.ps1 dist/*.sh dist/*.AppImage ; do
             echo "Uploading $payload"
             gh release upload ${GITHUB_REF_NAME} $payload --clobber &
             pids+=($!)

@@ -60,6 +60,8 @@ require (
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
+	github.com/gopherlibs/appindicator v1.2.0 // indirect
+	github.com/gotk3/gotk3 v0.6.5-0.20240618185848-ff349ae13f56 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

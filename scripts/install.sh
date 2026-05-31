@@ -109,7 +109,7 @@ esac
 
 SUDO=
 if [ "$(id -u)" -ne 0 ]; then
-    # Running as root, no need for sudo
+    # Not running as root, need sudo
     if ! available sudo; then
         error "This script requires superuser permissions. Please re-run as root."
     fi
@@ -186,9 +186,73 @@ if [ -f /etc/nv_tegra_release ] ; then
     fi
 fi
 
+configure_app() {
+    if [ "${OLLAMA_NO_APP:-}" = "1" ]; then
+        return 0
+    fi
+
+    if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+        status "No display server detected. Skipping desktop app installation."
+        status "Set OLLAMA_NO_APP=1 to suppress this message."
+        return 0
+    fi
+
+    APPIMAGE_URL="https://ollama.com/download/ollama-linux-${ARCH}.AppImage"
+    status "Downloading Ollama desktop app..."
+    if ! curl --fail --show-error --location --progress-bar \
+        -o "$TEMP_DIR/ollama-app.AppImage" "$APPIMAGE_URL"; then
+        warning "Could not download desktop app. Skipping."
+        return 0
+    fi
+
+    chmod +x "$TEMP_DIR/ollama-app.AppImage"
+
+    $SUDO mkdir -p /opt/ollama
+    $SUDO cp "$TEMP_DIR/ollama-app.AppImage" /opt/ollama/ollama-app.AppImage
+    $SUDO chmod +x /opt/ollama/ollama-app.AppImage
+
+    (cd "$TEMP_DIR" && ./ollama-app.AppImage --appimage-extract 'usr/share/icons/*' > /dev/null 2>&1 || true)
+    (cd "$TEMP_DIR" && ./ollama-app.AppImage --appimage-extract 'usr/share/applications/*' > /dev/null 2>&1 || true)
+    if [ -d "$TEMP_DIR/squashfs-root/usr/share/icons" ]; then
+        $SUDO cp -a "$TEMP_DIR/squashfs-root/usr/share/icons/"* /usr/share/icons/
+    fi
+    if [ -f "$TEMP_DIR/squashfs-root/usr/share/applications/com.ollama.Ollama.desktop" ]; then
+        sed "s|Exec=ollama-app|Exec=/opt/ollama/ollama-app.AppImage|" \
+            "$TEMP_DIR/squashfs-root/usr/share/applications/com.ollama.Ollama.desktop" | \
+            $SUDO tee /usr/share/applications/com.ollama.Ollama.desktop > /dev/null
+    fi
+    rm -rf "$TEMP_DIR/squashfs-root"
+
+    if available xdg-mime; then
+        xdg-mime default com.ollama.Ollama.desktop x-scheme-handler/ollama 2>/dev/null || true
+    fi
+    if available update-desktop-database; then
+        $SUDO update-desktop-database /usr/share/applications/ 2>/dev/null || true
+    fi
+
+    $SUDO tee /etc/xdg/autostart/ollama.desktop > /dev/null <<AUTOSTART
+[Desktop Entry]
+Type=Application
+Name=Ollama
+Comment=Run large language models locally
+Exec=/opt/ollama/ollama-app.AppImage hidden
+Icon=ollama
+Terminal=false
+Categories=Development;AI;
+AUTOSTART
+
+    INSTALL_APP=true
+}
+
+configure_app
+
 install_success() {
     status 'The Ollama API is now available at 127.0.0.1:11434.'
-    status 'Install complete. Run "ollama" from the command line.'
+    if [ "${INSTALL_APP:-}" = "true" ]; then
+        status 'Install complete. Run "ollama" from the command line, or launch the Ollama desktop app from your application menu.'
+    else
+        status 'Install complete. Run "ollama" from the command line.'
+    fi
 }
 trap install_success EXIT
 
@@ -247,8 +311,12 @@ EOF
     esac
 }
 
-if available systemctl; then
-    configure_systemd
+if [ "${INSTALL_APP:-}" = "true" ]; then
+    status "Skipping systemd service setup (desktop app manages server lifecycle)"
+else
+    if available systemctl; then
+        configure_systemd
+    fi
 fi
 
 # WSL2 only supports GPUs via nvidia passthrough

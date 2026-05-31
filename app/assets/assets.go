@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package assets
 
@@ -7,7 +7,7 @@ import (
 	"io/fs"
 )
 
-//go:embed *.ico
+//go:embed *.ico *.png
 var icons embed.FS
 
 func ListIcons() ([]string, error) {

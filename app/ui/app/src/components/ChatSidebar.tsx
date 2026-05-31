@@ -300,7 +300,7 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
           <RocketLaunchIcon className="h-5 w-5 stroke-current" />
           <span className="truncate">Launch</span>
         </Link>
-        {isWindows && (
+        {(isWindows || navigator.platform.toLowerCase().includes("linux")) && (
           <Link
             href="/settings"
             className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:text-neutral-300`}

@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package updater
 
@@ -380,9 +380,12 @@ func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(str
 				continue
 			}
 
-			if !settings.AutoUpdateEnabled {
-				// Auto-update disabled - don't download, just log
+			if runtime.GOOS == "linux" || !settings.AutoUpdateEnabled {
 				slog.Debug("update available but auto-update disabled", "version", resp.UpdateVersion)
+				err = cb(resp.UpdateVersion)
+				if err != nil {
+					slog.Warn("failed to register update available with tray", "error", err)
+				}
 				continue
 			}
 

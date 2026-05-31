@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package server
 
@@ -23,6 +23,7 @@ import (
 )
 
 const restartDelay = time.Second
+const maxConsecutiveFailures = 5
 
 // Server is a managed ollama server process
 type Server struct {
@@ -54,11 +55,9 @@ func New(s *store.Store, devMode bool) *Server {
 func resolvePath(name string) string {
 	// look in the app bundle first
 	if exe, _ := os.Executable(); exe != "" {
-		var dir string
-		if runtime.GOOS == "windows" {
-			dir = filepath.Dir(exe)
-		} else {
-			dir = filepath.Join(filepath.Dir(exe), "..", "Resources")
+		dir := filepath.Dir(exe)
+		if runtime.GOOS == "darwin" {
+			dir = filepath.Join(dir, "..", "Resources")
 		}
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return filepath.Join(dir, name)
@@ -188,6 +187,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	reaped := false
+	consecutiveFailures := 0
 	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
@@ -218,10 +218,18 @@ func (s *Server) Run(ctx context.Context) error {
 					slog.Warn("failed to stop existing ollama server", "err", err)
 				} else {
 					slog.Debug("conflicting server stopped, waiting for port to be released")
+					consecutiveFailures = 0
 					continue
 				}
 			}
+			consecutiveFailures++
+			if consecutiveFailures >= maxConsecutiveFailures {
+				slog.Warn("ollama server failed to start after multiple attempts, giving up", "attempts", maxConsecutiveFailures)
+				return fmt.Errorf("ollama server failed to start after %d attempts", maxConsecutiveFailures)
+			}
 			slog.Error("ollama exited", "err", err)
+		} else {
+			consecutiveFailures = 0
 		}
 	}
 	return ctx.Err()

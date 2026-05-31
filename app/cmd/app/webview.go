@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package main
 
@@ -440,9 +440,10 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 		})
 
 		// On Darwin, we can't have 2 threads both running global event loops
+		// On Linux/GTK, gtk_main() must run on the main thread
 		// but on Windows, the event loops are tied to the window, so we're
 		// able to run in both the tray and webview
-		if runtime.GOOS != "darwin" {
+		if runtime.GOOS == "windows" {
 			slog.Debug("starting webview event loop")
 			go func() {
 				wv.Run()

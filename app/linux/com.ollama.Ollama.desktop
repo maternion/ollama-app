@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ollama
+Comment=Run large language models locally
+Exec=ollama-app %U
+Icon=ollama
+Terminal=false
+Categories=Development;X-AI;
+MimeType=x-scheme-handler/ollama;
+StartupNotify=true
+StartupWMClass=ollama

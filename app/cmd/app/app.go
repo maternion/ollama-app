@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package main
 
@@ -142,15 +142,12 @@ func main() {
 	slog.SetDefault(slog.New(handler))
 	logStartup()
 
-	// On Windows, check if another instance is running and send URL to it
+	// On Windows/Linux, check if another instance is running and send URL to it
 	// Do this after logging is set up so we can debug issues
-	if runtime.GOOS == "windows" && urlSchemeRequest != "" {
+	if urlSchemeRequest != "" {
 		slog.Debug("checking for existing instance", "url", urlSchemeRequest)
 		if checkAndHandleExistingInstance(urlSchemeRequest) {
-			// The function will exit if it successfully sends to another instance
-			// If we reach here, we're the first/only instance
 		} else {
-			// No existing instance found, handle the URL scheme in this instance
 			go func() {
 				handleURLSchemeInCurrentInstance(urlSchemeRequest)
 			}()
@@ -246,9 +243,15 @@ func main() {
 	wv.Store = st
 	done := make(chan error, 1)
 	osrv := server.New(st, devMode)
+	var serverFailed bool
 	go func() {
 		slog.Info("starting ollama server")
-		done <- osrv.Run(octx)
+		err := osrv.Run(octx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			serverFailed = true
+			slog.Error("ollama server exited with error", "error", err)
+		}
+		done <- err
 	}()
 
 	upd := &updater.Updater{Store: st}
@@ -256,11 +259,20 @@ func main() {
 	uiServer := ui.Server{
 		Token: token,
 		Restart: func() {
+			if serverFailed {
+				slog.Warn("not restarting ollama server: previous run failed")
+				return
+			}
 			ocancel()
 			<-done
 			octx, ocancel = context.WithCancel(ctx)
 			go func() {
-				done <- osrv.Run(octx)
+				err := osrv.Run(octx)
+				if err != nil && !errors.Is(err, context.Canceled) {
+					serverFailed = true
+					slog.Error("ollama server exited with error", "error", err)
+				}
+				done <- err
 			}()
 		},
 		Store:        st,
@@ -458,8 +470,9 @@ func openInBrowser(url string) {
 	case "darwin":
 		cmd = "open"
 		args = []string{url}
-	default: // "linux", "freebsd", "openbsd", "netbsd"... should not reach here
-		slog.Warn("unsupported OS for openInBrowser", "os", runtime.GOOS)
+	default:
+		cmd = "xdg-open"
+		args = []string{url}
 	}
 
 	slog.Info("executing browser command", "cmd", cmd, "args", args)
