@@ -380,12 +380,19 @@ func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(str
 				continue
 			}
 
-			if runtime.GOOS == "linux" || !settings.AutoUpdateEnabled {
-				slog.Debug("update available but auto-update disabled", "version", resp.UpdateVersion)
+			// Linux: no auto-download, always notify tray via callback
+			if runtime.GOOS == "linux" {
+				slog.Debug("update available", "version", resp.UpdateVersion)
 				err = cb(resp.UpdateVersion)
 				if err != nil {
 					slog.Warn("failed to register update available with tray", "error", err)
 				}
+				continue
+			}
+
+			// Non-Linux: respect auto-update setting — silently skip if disabled
+			if !settings.AutoUpdateEnabled {
+				slog.Debug("update available but auto-update disabled", "version", resp.UpdateVersion)
 				continue
 			}
 
