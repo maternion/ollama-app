@@ -382,6 +382,10 @@ jobs:
       - name: Build UI
         working-directory: ./app/ui/app
         run: npm run build
+      - name: Install tscriptify
+        run: |
+          go install github.com/tkrajina/typescriptify-golang-structs/tscriptify@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       - name: Run go generate
         run: go generate ./app/...
       - name: Build Linux app
