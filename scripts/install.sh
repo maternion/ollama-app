@@ -41,9 +41,7 @@ esac
 
 VER_PARAM="${OLLAMA_VERSION:+?version=$OLLAMA_VERSION}"
 
-# Base download URL — set OLLAMA_REPO to your GitHub fork to change where assets are downloaded from
-OLLAMA_REPO="${OLLAMA_REPO:-maternion/ollama-app}"
-OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-https://github.com/$OLLAMA_REPO/releases/latest/download}"
+OLLAMA_BASE_URL="https://github.com/maternion/ollama-app/releases/latest/download"
 
 ###########################################
 # macOS
