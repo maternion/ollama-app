@@ -6,6 +6,10 @@ package main
 #cgo pkg-config: gtk+-3.0
 #include <gtk/gtk.h>
 
+static gboolean gtk_init_check_wrapper(int *argc, char ***argv) {
+	return gtk_init_check(argc, argv);
+}
+
 static void set_window_icon_from_file(void *window_ptr, const char *icon_path) {
 	GtkWindow *window = GTK_WINDOW(window_ptr);
 	gtk_window_set_icon_from_file(window, icon_path, NULL);
@@ -172,7 +176,11 @@ func UpdateAvailable(ver string) error {
 func osRun(shutdown func(), hasCompletedFirstRun, startHidden bool) {
 	app.shutdown = shutdown
 
-	C.gtk_init(nil, nil)
+	if C.gtk_init_check_wrapper(nil, nil) == 0 {
+		slog.Error("failed to initialize GTK: no display server available")
+		fmt.Fprintln(os.Stderr, "Error: Could not open display. Ensure a display server (X11 or Wayland) is running.")
+		os.Exit(1)
+	}
 
 	var err error
 	tray, err = linuxtray.NewTray(app)
@@ -250,7 +258,7 @@ func installAutostart() {
 		return
 	}
 
-	desktopEntry := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s hidden\nIcon=ollama\nTerminal=false\nCategories=Development;AI;\nMimeType=x-scheme-handler/ollama;\nStartupWMClass=ollama\n", exe)
+	desktopEntry := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s hidden\nIcon=ollama\nTerminal=false\nCategories=Development;X-AI;\nMimeType=x-scheme-handler/ollama;\nStartupWMClass=ollama\n", exe)
 
 	if err := os.MkdirAll(autostartDir, 0o755); err != nil {
 		slog.Warn("unable to create autostart directory", "error", err)
@@ -289,7 +297,7 @@ func installDesktopEntry() {
 		}
 
 		desktopEntry := fmt.Sprintf(
-			"[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s %%U\nIcon=ollama\nTerminal=false\nCategories=Development;AI;\nMimeType=x-scheme-handler/ollama;\nStartupNotify=true\nStartupWMClass=ollama\n",
+			"[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s %%U\nIcon=ollama\nTerminal=false\nCategories=Development;X-AI;\nMimeType=x-scheme-handler/ollama;\nStartupNotify=true\nStartupWMClass=ollama\n",
 			exe,
 		)
 

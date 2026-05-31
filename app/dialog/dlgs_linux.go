@@ -156,8 +156,10 @@ func (b *FileBuilder) runMultiFileDlg() ([]string, error) {
 		filenames := C.gtk_file_chooser_get_filenames(chooser)
 		var result []string
 		for p := filenames; p != nil; p = p.next {
-			s := C.GoString((*C.char)(unsafe.Pointer(p.data)))
-			result = append(result, s)
+			if p.data != nil {
+				s := C.GoString((*C.char)(unsafe.Pointer(p.data)))
+				result = append(result, s)
+			}
 			C.g_free(p.data)
 		}
 		C.g_slist_free(filenames)

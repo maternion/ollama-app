@@ -11,6 +11,9 @@ GOFLAGS="${GOFLAGS:-}"
 CGO_CFLAGS="${CGO_CFLAGS:-}"
 CGO_CXXFLAGS="${CGO_CXXFLAGS:-}"
 
+VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo '0.0.0')}"
+LDFLAGS="-X github.com/ollama/ollama/version.Version=${VERSION} -X github.com/ollama/ollama/app/version.Version=${VERSION}"
+
 echo "=== Building Ollama Linux App ==="
 if [ -n "$DIST_DIR" ]; then
     echo "Using pre-built dist directory: $DIST_DIR"
@@ -29,10 +32,10 @@ go generate ./app/...
 
 # Step 3: Build Go app + ollama CLI
 echo "--- Building ollama-app ---"
-CGO_ENABLED=1 go build ${GOFLAGS} -o "$APPDIR/usr/bin/ollama-app" ./app/cmd/app
+CGO_ENABLED=1 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o "$APPDIR/usr/bin/ollama-app" ./app/cmd/app
 
 echo "--- Building ollama CLI ---"
-CGO_ENABLED=1 go build ${GOFLAGS} -o "$APPDIR/usr/bin/ollama" .
+CGO_ENABLED=1 go build ${GOFLAGS} -ldflags "${LDFLAGS}" -o "$APPDIR/usr/bin/ollama" .
 
 # Step 4: Install llama-server
 echo "--- Installing llama-server ---"
@@ -87,8 +90,6 @@ SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
 export PATH="${HERE}/usr/bin:${PATH}"
 export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export XDG_CACHE_HOME="${HERE}/usr/cache:${XDG_CACHE_HOME:-${HOME}/.cache}"
-export GDK_BACKEND="${GDK_BACKEND:-x11}"
 exec "${HERE}/usr/bin/ollama-app" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"

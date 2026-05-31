@@ -169,6 +169,10 @@ func NewTray(app AppCallbacks) (TrayCallbacks, error) {
 	C.free(unsafe.Pointer(cIconName))
 	C.free(unsafe.Pointer(cIconPath))
 
+	if t.indicator == nil {
+		return nil, fmt.Errorf("failed to create app indicator (no display server?)")
+	}
+
 	ctitle := C.CString("Ollama")
 	C.indicator_set_title(t.indicator, ctitle)
 	C.free(unsafe.Pointer(ctitle))

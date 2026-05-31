@@ -7,7 +7,7 @@ concurrency:
   # For non-PR pushes, concurrency.group needs to be unique for every distinct
   # CI run we want to have happen. Use run_id, which in practice means all
   # non-PR CI runs will be allowed to run without preempting each other.
-  group: ${{ github.workflow }}-$${{ github.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 on:
@@ -405,6 +405,9 @@ jobs:
             LLAMA_CPP_VERSION
             MLX_VERSION
             MLX_C_VERSION
+      - name: Install Linux app dependencies
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: sudo apt-get update && sudo apt-get install -y libayatana-appindicator3-dev libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

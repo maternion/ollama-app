@@ -1,6 +1,8 @@
 #!/bin/sh
 # This script installs Ollama on Linux and macOS.
 # It detects the current operating system architecture and installs the appropriate version of Ollama.
+# On Linux, the CLI + GPU runtimes are downloaded from ollama.com (upstream),
+# and the desktop AppImage is downloaded from github.com/maternion/ollama-app.
 
 # Wrap script in main function so that a truncated partial download doesn't end
 # up executing half a script.
@@ -39,9 +41,8 @@ case "$ARCH" in
     *) error "Unsupported architecture: $ARCH" ;;
 esac
 
-VER_PARAM="${OLLAMA_VERSION:+?version=$OLLAMA_VERSION}"
-
-OLLAMA_BASE_URL="https://github.com/maternion/ollama-app/releases/latest/download"
+OLLAMA_BASE_URL="https://ollama.com/download"
+APPIMAGE_BASE_URL="https://github.com/maternion/ollama-app/releases/latest/download"
 
 ###########################################
 # macOS
@@ -57,7 +58,7 @@ if [ "$OS" = "Darwin" ]; then
         exit 1
     fi
 
-    DOWNLOAD_URL="${OLLAMA_BASE_URL}/Ollama-darwin.zip${VER_PARAM}"
+    DOWNLOAD_URL="${OLLAMA_BASE_URL}/Ollama-darwin.zip"
 
     if pgrep -x Ollama >/dev/null 2>&1; then
         status "Stopping running Ollama instance..."
@@ -135,7 +136,7 @@ download_and_extract() {
     local filename="$3"
 
     # Check if .tar.zst is available
-    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst${VER_PARAM}" >/dev/null 2>&1; then
+    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst" >/dev/null 2>&1; then
         # zst file exists - check if we have zstd tool
         if ! available zstd; then
             error "This version requires zstd for extraction. Please install zstd and try again:
@@ -146,7 +147,7 @@ download_and_extract() {
 
         status "Downloading ${filename}.tar.zst"
         curl --fail --show-error --location --progress-bar \
-            "${url_base}/${filename}.tar.zst${VER_PARAM}" | \
+            "${url_base}/${filename}.tar.zst" | \
             zstd -d | $SUDO tar -xf - -C "${dest_dir}"
         return 0
     fi
@@ -154,7 +155,7 @@ download_and_extract() {
     # Fall back to .tgz for older versions
     status "Downloading ${filename}.tgz"
     curl --fail --show-error --location --progress-bar \
-        "${url_base}/${filename}.tgz${VER_PARAM}" | \
+        "${url_base}/${filename}.tgz" | \
         $SUDO tar -xzf - -C "${dest_dir}"
 }
 
@@ -170,19 +171,21 @@ fi
 status "Installing ollama to $OLLAMA_INSTALL_DIR"
 $SUDO install -o0 -g0 -m755 -d $BINDIR
 $SUDO install -o0 -g0 -m755 -d "$OLLAMA_INSTALL_DIR/lib/ollama"
-download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}"
+
+# Download CLI + GPU runtimes from upstream ollama.com
+download_and_extract "$OLLAMA_BASE_URL" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}"
 
 if [ "$OLLAMA_INSTALL_DIR/bin/ollama" != "$BINDIR/ollama" ] ; then
     status "Making ollama accessible in the PATH in $BINDIR"
-    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/ollama" "$BINDIR/ollama"
+    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/bin/ollama" "$BINDIR/ollama"
 fi
 
 # Check for NVIDIA JetPack systems with additional downloads
 if [ -f /etc/nv_tegra_release ] ; then
     if grep R36 /etc/nv_tegra_release > /dev/null ; then
-        download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack6"
+        download_and_extract "$OLLAMA_BASE_URL" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack6"
     elif grep R35 /etc/nv_tegra_release > /dev/null ; then
-        download_and_extract "${OLLAMA_BASE_URL}" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack5"
+        download_and_extract "$OLLAMA_BASE_URL" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack5"
     else
         warning "Unsupported JetPack version detected.  GPU may not be supported"
     fi
@@ -199,7 +202,7 @@ configure_app() {
         return 0
     fi
 
-    APPIMAGE_URL="${OLLAMA_BASE_URL}/ollama-linux-${ARCH}.AppImage"
+    APPIMAGE_URL="${APPIMAGE_BASE_URL}/ollama-linux-${ARCH}.AppImage"
     status "Downloading Ollama desktop app..."
     if ! curl --fail --show-error --location --progress-bar \
         -o "$TEMP_DIR/ollama-app.AppImage" "$APPIMAGE_URL"; then
@@ -240,7 +243,8 @@ Comment=Run large language models locally
 Exec=/opt/ollama/ollama-app.AppImage hidden
 Icon=ollama
 Terminal=false
-Categories=Development;AI;
+Categories=Development;X-AI;
+MimeType=x-scheme-handler/ollama;
 AUTOSTART
 
     INSTALL_APP=true
@@ -261,7 +265,7 @@ trap install_success EXIT
 # Everything from this point onwards is optional.
 
 configure_systemd() {
-    if ! id ollama >/dev/null 2>&1; then
+    if id ollama >/dev/null 2>&1; then
         status "Creating ollama user..."
         $SUDO useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama
     fi
@@ -410,7 +414,7 @@ install_cuda_driver_yum() {
         rhel)
             status 'Installing EPEL repository...'
             # EPEL is required for third-party dependencies such as dkms and libvdpau
-            $SUDO $PACKAGE_MANAGER -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-$2.noarch.rpm || true
+            $SUDO $PACKAGE_MANAGER -y install https://dl.fedoraprojects.org/pub/epel/epel-release-latest-$2.noarch.rpm || true
             ;;
     esac
 
@@ -436,7 +440,7 @@ install_cuda_driver_apt() {
     case $1 in
         debian)
             status 'Enabling contrib sources...'
-            $SUDO sed 's/main/contrib/' < /etc/apt/sources.list | $SUDO tee /etc/apt/sources.list.d/contrib.list > /dev/null
+            $SUDO sed 's/main/contrib/' < /etc/apt/sources.list | $SUDO tee /etc/apt/sources.list/contrib.list > /dev/null
             if [ -f "/etc/apt/sources.list.d/debian.sources" ]; then
                 $SUDO sed 's/main/contrib/' < /etc/apt/sources.list.d/debian.sources | $SUDO tee /etc/apt/sources.list.d/contrib.sources > /dev/null
             fi
@@ -521,5 +525,3 @@ fi
 status "NVIDIA GPU ready."
 install_success
 }
-
-main
