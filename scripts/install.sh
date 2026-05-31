@@ -41,8 +41,13 @@ case "$ARCH" in
     *) error "Unsupported architecture: $ARCH" ;;
 esac
 
-OLLAMA_BASE_URL="https://github.com/ollama/ollama/releases/latest/download"
-APPIMAGE_BASE_URL="https://github.com/maternion/ollama-app/releases/latest/download"
+if [ -n "${OLLAMA_VERSION:-}" ]; then
+    OLLAMA_BASE_URL="https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}"
+    APPIMAGE_BASE_URL="https://github.com/maternion/ollama-app/releases/download/${OLLAMA_VERSION}"
+else
+    OLLAMA_BASE_URL="https://github.com/ollama/ollama/releases/latest/download"
+    APPIMAGE_BASE_URL="https://github.com/maternion/ollama-app/releases/latest/download"
+fi
 
 ###########################################
 # macOS

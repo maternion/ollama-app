@@ -18,12 +18,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/app/logrotate"
 	"github.com/ollama/ollama/app/store"
 )
 
 const restartDelay = time.Second
 const maxConsecutiveFailures = 5
+
+// IsServerRunning checks if an ollama server is already reachable
+func IsServerRunning(ctx context.Context) bool {
+	c, err := api.ClientFromEnvironment()
+	if err != nil {
+		slog.Debug("failed to create ollama client", "error", err)
+		return false
+	}
+	if _, err := c.Version(ctx); err == nil {
+		slog.Info("found running ollama server, skipping managed server start")
+		return true
+	}
+	return false
+}
 
 // Server is a managed ollama server process
 type Server struct {

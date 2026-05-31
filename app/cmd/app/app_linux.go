@@ -17,7 +17,7 @@ static void set_window_icon_from_file(void *window_ptr, const char *icon_path) {
 
 static void show_gtk_window(void *ptr) {
 	GtkWidget *w = GTK_WIDGET(ptr);
-	gtk_widget_show_all(w);
+	gtk_widget_show(w);
 	gtk_window_present(GTK_WINDOW(w));
 }
 

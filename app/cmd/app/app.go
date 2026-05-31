@@ -242,23 +242,35 @@ func main() {
 	// making the webview a global variable is easier for now
 	wv.Store = st
 	done := make(chan error, 1)
-	osrv := server.New(st, devMode)
 	var serverFailed bool
-	go func() {
-		slog.Info("starting ollama server")
-		err := osrv.Run(octx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			serverFailed = true
-			slog.Error("ollama server exited with error", "error", err)
-		}
-		done <- err
-	}()
+	var osrv *server.Server
+
+	// Check if an ollama server is already running before starting our own
+	if !server.IsServerRunning(ctx) {
+		osrv = server.New(st, devMode)
+		go func() {
+			slog.Info("starting ollama server")
+			err := osrv.Run(octx)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				serverFailed = true
+				slog.Error("ollama server exited with error", "error", err)
+			}
+			done <- err
+		}()
+	} else {
+		slog.Info("using existing ollama server, skipping managed server start")
+		done <- nil
+	}
 
 	upd := &updater.Updater{Store: st}
 
 	uiServer := ui.Server{
 		Token: token,
 		Restart: func() {
+			if osrv == nil {
+				slog.Warn("not restarting ollama server: using external server")
+				return
+			}
 			if serverFailed {
 				slog.Warn("not restarting ollama server: previous run failed")
 				return
