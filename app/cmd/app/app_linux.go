@@ -34,6 +34,15 @@ static gboolean _show_idle_cb(gpointer data) {
 static void show_gtk_window_idle(void *ptr) {
 	g_idle_add(_show_idle_cb, ptr);
 }
+
+static gboolean _gtk_main_quit_idle(gpointer data) {
+	gtk_main_quit();
+	return G_SOURCE_REMOVE;
+}
+
+static void gtk_main_quit_idle(void) {
+	g_idle_add(_gtk_main_quit_idle, NULL);
+}
 */
 import "C"
 
@@ -215,7 +224,7 @@ func osRun(shutdown func(), hasCompletedFirstRun, startHidden bool) {
 				urlFile := filepath.Join(lockDir, "ollama-url-scheme")
 				data, err := os.ReadFile(urlFile)
 				if err != nil {
-					slog.Warn("received SIGUSR1 but failed to read URL scheme file", "error", err)
+					slog.Warn("received SIGUSR2 but failed to read URL scheme file", "error", err)
 					continue
 				}
 				os.Remove(urlFile)
@@ -322,7 +331,7 @@ func installDesktopEntry() {
 }
 
 func quit() {
-	C.gtk_main_quit()
+	C.gtk_main_quit_idle()
 }
 
 func LaunchNewApp() {}

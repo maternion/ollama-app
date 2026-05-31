@@ -21,6 +21,24 @@ import (
 
 extern void goTrayCallback(int id);
 
+static gboolean _indicator_set_attention_idle(gpointer ind) {
+	app_indicator_set_status((AppIndicator*)ind, APP_INDICATOR_STATUS_ATTENTION);
+	return G_SOURCE_REMOVE;
+}
+
+static void indicator_set_attention_idle(void *ind) {
+	g_idle_add(_indicator_set_attention_idle, ind);
+}
+
+static gboolean _gtk_main_quit_idle(gpointer data) {
+	gtk_main_quit();
+	return G_SOURCE_REMOVE;
+}
+
+static void gtk_main_quit_idle(void) {
+	g_idle_add(_gtk_main_quit_idle, NULL);
+}
+
 static AppIndicator *new_indicator(const char *id, const char *icon_name, const char *icon_path) {
 	AppIndicator *ind = app_indicator_new(id, icon_name, APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
 	if (icon_path && icon_path[0] != '\0') {
@@ -209,7 +227,7 @@ func (t *Tray) createMenu() {
 func (t *Tray) TrayRun() {}
 
 func (t *Tray) Quit() {
-	C.gtk_main_quit()
+	C.gtk_main_quit_idle()
 }
 
 func (t *Tray) UpdateAvailable(ver string) error {
@@ -219,7 +237,7 @@ func (t *Tray) UpdateAvailable(ver string) error {
 		return nil
 	}
 	t.updateNotified = true
-	C.indicator_set_status_attention(t.indicator)
+	C.indicator_set_attention_idle(unsafe.Pointer(t.indicator))
 	slog.Info("update available notification shown via tray", "version", ver)
 	return nil
 }
