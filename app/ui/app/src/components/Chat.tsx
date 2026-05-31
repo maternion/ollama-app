@@ -236,6 +236,7 @@ export default function Chat({ chatId }: { chatId: string }) {
               editingMessageIndex={editingMessage?.index}
               error={chatError}
               browserToolResult={browserToolResult}
+              chatId={chatId}
             />
           </section>
 

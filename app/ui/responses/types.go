@@ -55,7 +55,7 @@ type ModelCapabilitiesResponse struct {
 
 // ChatEvent is for regular chat messages and assistant interactions
 type ChatEvent struct {
-	EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\""`
+	EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\" | \"stats\""`
 
 	// Chat/Assistant message fields
 	Content           *string    `json:"content,omitempty"`
@@ -72,6 +72,11 @@ type ChatEvent struct {
 
 	// Chat creation fields
 	ChatID *string `json:"chatId,omitempty"`
+
+	// Stats fields (for stats event)
+	EvalCount       *int     `json:"evalCount,omitempty"`
+	EvalDuration    *string  `json:"evalDuration,omitempty"`  // human-readable like "2.5s"
+	TokensPerSecond *float64 `json:"tokensPerSecond,omitempty"`
 
 	// Tool state field from the new code
 	ToolState any `json:"toolState,omitempty"`

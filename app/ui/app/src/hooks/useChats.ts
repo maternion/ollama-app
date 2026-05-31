@@ -666,6 +666,9 @@ export const useSendMessage = (chatId: string) => {
               queryKey: ["chat", currentChatId],
             });
             break;
+          case "stats":
+            queryClient.setQueryData(["chatStats", currentChatId], event);
+            break;
           case "chat_created": {
             if (!event.chatId) break;
             const newId = event.chatId;

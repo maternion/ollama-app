@@ -870,6 +870,9 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 
 	passNum := 1
 
+	var lastEvalCount int
+	var lastEvalDuration time.Duration
+
 	for {
 		var toolsExecuted bool
 
@@ -910,6 +913,11 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 				// Remove the loading indicator on first token
 				cancelLoading()
 				loading = false
+			}
+
+			if res.Done {
+				lastEvalCount = res.EvalCount
+				lastEvalDuration = res.EvalDuration
 			}
 
 			// Start thinking timer on first thinking content or after tool call when thinking again
@@ -1222,6 +1230,26 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 
 	json.NewEncoder(w).Encode(responses.ChatEvent{EventName: "done"})
 	flusher.Flush()
+
+	if lastEvalCount > 0 {
+		var tps *float64
+		var evalDurationStr *string
+		if lastEvalDuration > 0 {
+			tpsVal := float64(lastEvalCount) / lastEvalDuration.Seconds()
+			tps = &tpsVal
+			d := lastEvalDuration.Truncate(time.Millisecond).String()
+			evalDurationStr = &d
+		}
+		evalCount := lastEvalCount
+		statsEvent := responses.ChatEvent{
+			EventName:       "stats",
+			EvalCount:       &evalCount,
+			TokensPerSecond: tps,
+			EvalDuration:    evalDurationStr,
+		}
+		json.NewEncoder(w).Encode(statsEvent)
+		flusher.Flush()
+	}
 
 	if len(chat.Messages) > 0 {
 		chat.Messages[len(chat.Messages)-1].Stream = false
