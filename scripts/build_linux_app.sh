@@ -60,9 +60,14 @@ if [ -n "$DIST_DIR" ]; then
         done
     fi
 else
-    echo "WARNING: DIST_DIR not set; building llama-server locally" >&2
-    echo "  For release builds, set DIST_DIR=dist/linux-amd64 to use pre-built artifacts" >&2
-    CGO_ENABLED=1 go build ${GOFLAGS} -o "$APPDIR/usr/lib/ollama/llama-server" ./cmd/llama-server
+    echo "WARNING: DIST_DIR not set; looking for llama-server on PATH" >&2
+    if command -v ollama &>/dev/null; then
+        ln -sf "$(command -v ollama)" "$APPDIR/usr/lib/ollama/llama-server"
+        echo "  Symlinked ollama as llama-server (same binary handles both roles)" >&2
+    else
+        echo "  llama-server not available. AppImage will fall back to system PATH." >&2
+        echo "  For release builds, set DIST_DIR=dist/linux-amd64 to use pre-built artifacts" >&2
+    fi
 fi
 
 # Step 5: Create AppDir structure
@@ -103,13 +108,13 @@ cp "$ROOT_DIR/app/assets/ollama.png" "$APPDIR/"
 # Step 6: Create AppImage (if appimagetool is available)
 if command -v appimagetool &>/dev/null; then
     echo "--- Creating AppImage ---"
-    ARCH=$(uname -m)
-    case "$ARCH" in
-        x86_64) ARCH="amd64" ;;
-        aarch64|arm64) ARCH="arm64" ;;
+    ARCH_TAG="$(uname -m)"
+    case "$ARCH_TAG" in
+        x86_64) ARCH_FILENAME="amd64" ;;
+        aarch64|arm64) ARCH_FILENAME="arm64" ;;
     esac
-    appimagetool "$APPDIR" "$BUILD_DIR/ollama-linux-${ARCH}.AppImage"
-    echo "=== AppImage created: $BUILD_DIR/ollama-linux-${ARCH}.AppImage ==="
+    ARCH="$ARCH_TAG" appimagetool "$APPDIR" "$BUILD_DIR/ollama-linux-${ARCH_FILENAME}.AppImage"
+    echo "=== AppImage created: $BUILD_DIR/ollama-linux-${ARCH_FILENAME}.AppImage ==="
 else
     echo "=== appimagetool not found. AppDir created at $APPDIR ==="
     echo "=== Install appimagetool to create an AppImage: ==="
