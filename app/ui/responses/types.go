@@ -75,7 +75,7 @@ type ChatEvent struct {
 
 	// Stats fields (for stats event)
 	EvalCount       *int     `json:"evalCount,omitempty"`
-	EvalDuration    *string  `json:"evalDuration,omitempty"`  // human-readable like "2.5s"
+	EvalDuration    *string  `json:"evalDuration,omitempty"` // human-readable like "2.5s"
 	TokensPerSecond *float64 `json:"tokensPerSecond,omitempty"`
 
 	// Tool state field from the new code

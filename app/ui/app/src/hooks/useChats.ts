@@ -708,9 +708,27 @@ export const useSendMessage = (chatId: string) => {
               );
             }
             break;
-          case "stats":
+          case "stats": {
             hasServerStats = true;
+            queryClient.setQueryData(
+              ["chat", currentChatId],
+              (old: { chat: Chat } | undefined) => {
+                if (!old) return old;
+                const msgs = [...(old.chat.messages || [])];
+                for (let i = msgs.length - 1; i >= 0; i--) {
+                  const m = msgs[i] as any;
+                  if (m.role === "assistant") {
+                    m.evalCount = event.evalCount;
+                    m.tokensPerSecond = event.tokensPerSecond;
+                    m.evalDuration = event.evalDuration;
+                    break;
+                  }
+                }
+                return { ...old, chat: new Chat({ ...old.chat, messages: msgs }) };
+              },
+            );
             break;
+          }
           case "chat_created": {
             if (!event.chatId) break;
             const newId = event.chatId;
