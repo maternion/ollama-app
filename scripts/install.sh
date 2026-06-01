@@ -298,6 +298,10 @@ EOF
     SYSTEMCTL_RUNNING="$(systemctl is-system-running || true)"
     case $SYSTEMCTL_RUNNING in
         running|degraded)
+            status "Killing any running ollama processes..."
+            $SUDO pkill -x ollama 2>/dev/null || true
+            sleep 1
+
             status "Enabling and starting ollama service..."
             $SUDO systemctl daemon-reload
             $SUDO systemctl enable ollama
@@ -315,11 +319,11 @@ EOF
 }
 
 if [ "${INSTALL_APP:-}" = "true" ]; then
-    status "Skipping systemd service setup (desktop app manages server lifecycle)"
-else
-    if available systemctl; then
+    status "Setting up systemd service for desktop app..."
+fi
+
+if available systemctl; then
         configure_systemd
-    fi
 fi
 
 # WSL2 only supports GPUs via nvidia passthrough

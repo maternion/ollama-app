@@ -1481,7 +1481,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
 
 	// set default models directory if not set
 	if settings.Models == "" {
-		settings.Models = envconfig.Models()
+		settings.Models = store.DefaultModelsDir()
 	}
 
 	// Include current runtime settings

@@ -177,6 +177,34 @@ type Settings struct {
 	AutoUpdateEnabled bool
 }
 
+// DefaultModelsDir returns the default models directory for the app.
+// Priority: OLLAMA_MODELS env var > systemd service env > system ollama installation > $HOME/.ollama/models
+func DefaultModelsDir() string {
+	if dir := os.Getenv("OLLAMA_MODELS"); dir != "" {
+		return dir
+	}
+	if dir := systemdServiceModelsDir(); dir != "" {
+		return dir
+	}
+	systemDir := "/usr/share/ollama/.ollama/models"
+	if info, err := os.Stat(systemDir); err == nil && info.IsDir() {
+		return systemDir
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(home, ".ollama", "models")
+	}
+	return ".ollama/models"
+}
+
+// systemdServiceModelsDir returns OLLAMA_MODELS from the systemd service env.
+// Default implementation returns empty string; Linux overrides it.
+var systemdServiceModelsDir = func() string { return "" }
+
+// restartService restarts the ollama service. On Linux it uses systemd via pkexec.
+// Default implementation is a no-op; Linux overrides it.
+var restartService = func() error { return nil }
+
 type Store struct {
 	// DBPath allows overriding the default database path (mainly for testing)
 	DBPath string
@@ -408,6 +436,12 @@ func (s *Store) SetSettings(settings Settings) error {
 	}
 
 	return s.db.setSettings(settings)
+}
+
+// RestartOllamaService restarts the ollama service.
+// On Linux, this uses systemctl via pkexec. On other platforms it's a no-op.
+func (s *Store) RestartOllamaService() error {
+	return restartService()
 }
 
 func (s *Store) Chats() ([]Chat, error) {

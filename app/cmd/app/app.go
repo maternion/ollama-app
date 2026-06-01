@@ -24,7 +24,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/ollama/ollama/app/auth"
 	"github.com/ollama/ollama/app/logrotate"
-	"github.com/ollama/ollama/app/server"
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/tools"
 	"github.com/ollama/ollama/app/ui"
@@ -242,51 +241,14 @@ func main() {
 	// making the webview a global variable is easier for now
 	wv.Store = st
 	done := make(chan error, 1)
-	var serverFailed bool
-	var osrv *server.Server
 
-	// Check if an ollama server is already running before starting our own
-	if !server.IsServerRunning(ctx) {
-		osrv = server.New(st, devMode)
-		go func() {
-			slog.Info("starting ollama server")
-			err := osrv.Run(octx)
-			if err != nil && !errors.Is(err, context.Canceled) {
-				serverFailed = true
-				slog.Error("ollama server exited with error", "error", err)
-			}
-			done <- err
-		}()
-	} else {
-		slog.Info("using existing ollama server, skipping managed server start")
-		done <- nil
-	}
+	osrv, serverFailed := startManagedServer(ctx, octx, st, devMode, done)
 
 	upd := &updater.Updater{Store: st}
 
 	uiServer := ui.Server{
 		Token: token,
-		Restart: func() {
-			if osrv == nil {
-				slog.Warn("not restarting ollama server: using external server")
-				return
-			}
-			if serverFailed {
-				slog.Warn("not restarting ollama server: previous run failed")
-				return
-			}
-			ocancel()
-			<-done
-			octx, ocancel = context.WithCancel(ctx)
-			go func() {
-				err := osrv.Run(octx)
-				if err != nil && !errors.Is(err, context.Canceled) {
-					serverFailed = true
-					slog.Error("ollama server exited with error", "error", err)
-				}
-				done <- err
-			}()
-		},
+		Restart: makeRestartFunc(osrv, serverFailed, octx, ocancel, done, ctx, st),
 		Store:        st,
 		ToolRegistry: toolRegistry,
 		Dev:          devMode,

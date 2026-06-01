@@ -13,7 +13,7 @@ integration/testdata/models/
 llama/build
 llama/vendor
 /ollama
-Ollama-x86_64.AppImage
+Ollama-*.AppImage
 .swp
 test_data
 .venv
