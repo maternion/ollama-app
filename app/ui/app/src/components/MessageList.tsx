@@ -1,9 +1,8 @@
-import { Message as MessageType, ChatEvent, DownloadEvent, ErrorEvent } from "@/gotypes";
+import { Message as MessageType, DownloadEvent, ErrorEvent } from "@/gotypes";
 import React from "react";
 import Message from "./Message";
 import Downloading from "./Downloading";
 import { ErrorMessage } from "./ErrorMessage";
-import { useQueryClient } from "@tanstack/react-query";
 
 export default function MessageList({
   messages,
@@ -15,7 +14,6 @@ export default function MessageList({
   editingMessageIndex,
   error,
   browserToolResult,
-  chatId,
 }: {
   messages: MessageType[];
   spacerHeight: number;
@@ -26,13 +24,8 @@ export default function MessageList({
   editingMessageIndex?: number;
   error?: ErrorEvent | null;
   browserToolResult?: any;
-  chatId?: string;
 }) {
   const [showDots, setShowDots] = React.useState(false);
-  const queryClient = useQueryClient();
-  const chatStats = chatId
-    ? (queryClient.getQueryData<ChatEvent>(["chatStats", chatId]) ?? null)
-    : null;
   const isDownloadingModel = downloadProgress && !downloadProgress.done;
   const shouldShowDownload = messages.length > 0;
 
@@ -96,7 +89,6 @@ export default function MessageList({
     >
       {messages.map((message, idx) => {
         const lastToolQuery = lastToolQueries[idx];
-        const isLastAssistant = idx === lastIdx && message.role === "assistant";
         return (
           <div key={`${message.created_at}-${idx}`} data-message-index={idx}>
             <Message
@@ -110,17 +102,6 @@ export default function MessageList({
               browserToolResult={browserToolResult}
               lastToolQuery={lastToolQuery}
             />
-            {isLastAssistant && chatStats?.evalCount && !isStreaming && (
-              <div className="flex items-center gap-3 mt-1 text-xs text-neutral-400 dark:text-neutral-500 select-none">
-                <span>{chatStats.evalCount} tokens</span>
-                {chatStats.tokensPerSecond && (
-                  <span>{chatStats.tokensPerSecond.toFixed(1)} tok/s</span>
-                )}
-                {chatStats.evalDuration && (
-                  <span>{chatStats.evalDuration}</span>
-                )}
-              </div>
-            )}
           </div>
         );
       })}

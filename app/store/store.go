@@ -46,6 +46,9 @@ type Message struct {
 	UpdatedAt         time.Time        `json:"updated_at"`
 	ThinkingTimeStart *time.Time       `json:"thinkingTimeStart,omitempty" ts_type:"Date | undefined" ts_transform:"__VALUE__ && new Date(__VALUE__)"`
 	ThinkingTimeEnd   *time.Time       `json:"thinkingTimeEnd,omitempty" ts_type:"Date | undefined" ts_transform:"__VALUE__ && new Date(__VALUE__)"`
+	EvalCount         *int             `json:"evalCount,omitempty" ts_type:"number | undefined"`
+	TokensPerSecond   *float64         `json:"tokensPerSecond,omitempty" ts_type:"number | undefined"`
+	EvalDuration      *string          `json:"evalDuration,omitempty" ts_type:"string | undefined"`
 }
 
 // MessageOptions contains optional parameters for creating a Message

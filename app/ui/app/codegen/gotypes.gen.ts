@@ -116,6 +116,9 @@ export class Message {
     updated_at: Time;
     thinkingTimeStart?: Date | undefined;
     thinkingTimeEnd?: Date | undefined;
+    evalCount?: number | undefined;
+    tokensPerSecond?: number | undefined;
+    evalDuration?: string | undefined;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -133,6 +136,9 @@ export class Message {
         this.updated_at = this.convertValues(source["updated_at"], Time);
         this.thinkingTimeStart = source["thinkingTimeStart"] && new Date(source["thinkingTimeStart"]);
         this.thinkingTimeEnd = source["thinkingTimeEnd"] && new Date(source["thinkingTimeEnd"]);
+        this.evalCount = source["evalCount"];
+        this.tokensPerSecond = source["tokensPerSecond"];
+        this.evalDuration = source["evalDuration"];
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {

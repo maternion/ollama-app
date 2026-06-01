@@ -343,6 +343,10 @@ export const useSendMessage = (chatId: string) => {
         { batchInterval: 4, immediateFirst: true }, // ~250fps for smoother updates
       );
 
+      let streamStartTime: number | null = null;
+      let tokenCount = 0;
+      let hasServerStats = false;
+
       for await (const event of events) {
         // If cancelled, continue draining the stream but don't update UI
         if (isCancelled) {
@@ -366,6 +370,12 @@ export const useSendMessage = (chatId: string) => {
 
         switch (event.eventName) {
           case "chat": {
+            if (streamStartTime === null && event.content && event.content.trim().length > 0) {
+              streamStartTime = Date.now();
+            }
+            if (event.content && event.content.length > 0) {
+              tokenCount++;
+            }
             // Update the current chat data with streaming content
             batcher.scheduleBatch((old: { chat: Chat } | undefined) => {
               if (!old) return old;
@@ -665,9 +675,41 @@ export const useSendMessage = (chatId: string) => {
             queryClient.invalidateQueries({
               queryKey: ["chat", currentChatId],
             });
+
+            // If server didn't compute stats, compute client-side and persist on message
+            if (streamStartTime !== null && tokenCount > 0) {
+              const elapsedMs = Date.now() - streamStartTime;
+              const elapsedSec = elapsedMs / 1000;
+              const tps = elapsedSec > 0 ? tokenCount / elapsedSec : 0;
+              const durationStr = elapsedSec < 1
+                ? `${Math.round(elapsedMs)}ms`
+                : elapsedSec < 60
+                  ? `${elapsedSec.toFixed(1)}s`
+                  : `${Math.floor(elapsedSec / 60)}m ${Math.round(elapsedSec % 60)}s`;
+
+              queryClient.setQueryData(
+                ["chat", currentChatId],
+                (old: { chat: Chat } | undefined) => {
+                  if (!old) return old;
+                  const msgs = [...(old.chat.messages || [])];
+                  for (let i = msgs.length - 1; i >= 0; i--) {
+                    const m = msgs[i] as any;
+                    if (m.role === "assistant") {
+                      if (!hasServerStats || m.evalDuration == null) {
+                        m.tokensPerSecond = Math.round(tps * 10) / 10;
+                        m.evalDuration = durationStr;
+                        if (m.evalCount == null) m.evalCount = tokenCount;
+                      }
+                      break;
+                    }
+                  }
+                  return { ...old, chat: new Chat({ ...old.chat, messages: msgs }) };
+                },
+              );
+            }
             break;
           case "stats":
-            queryClient.setQueryData(["chatStats", currentChatId], event);
+            hasServerStats = true;
             break;
           case "chat_created": {
             if (!event.chatId) break;

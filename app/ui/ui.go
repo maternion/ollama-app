@@ -872,6 +872,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 
 	var lastEvalCount int
 	var lastEvalDuration time.Duration
+	var lastTotalDuration time.Duration
 
 	for {
 		var toolsExecuted bool
@@ -918,6 +919,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 			if res.Done {
 				lastEvalCount = res.EvalCount
 				lastEvalDuration = res.EvalDuration
+				lastTotalDuration = res.TotalDuration
 			}
 
 			// Start thinking timer on first thinking content or after tool call when thinking again
@@ -1234,10 +1236,15 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 	if lastEvalCount > 0 {
 		var tps *float64
 		var evalDurationStr *string
-		if lastEvalDuration > 0 {
-			tpsVal := float64(lastEvalCount) / lastEvalDuration.Seconds()
+
+		evalDuration := lastEvalDuration
+		if evalDuration <= 0 && lastTotalDuration > 0 {
+			evalDuration = lastTotalDuration
+		}
+		if evalDuration > 0 {
+			tpsVal := float64(lastEvalCount) / evalDuration.Seconds()
 			tps = &tpsVal
-			d := lastEvalDuration.Truncate(time.Millisecond).String()
+			d := evalDuration.Truncate(time.Millisecond).String()
 			evalDurationStr = &d
 		}
 		evalCount := lastEvalCount
@@ -1249,6 +1256,21 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 		}
 		json.NewEncoder(w).Encode(statsEvent)
 		flusher.Flush()
+
+		if len(chat.Messages) > 0 {
+			last := &chat.Messages[len(chat.Messages)-1]
+			if last.Role == "assistant" {
+				last.EvalCount = &evalCount
+				if tps != nil {
+					tpsCopy := *tps
+					last.TokensPerSecond = &tpsCopy
+				}
+				if evalDurationStr != nil {
+					dCopy := *evalDurationStr
+					last.EvalDuration = &dCopy
+				}
+			}
+		}
 	}
 
 	if len(chat.Messages) > 0 {
