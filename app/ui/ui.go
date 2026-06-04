@@ -1276,6 +1276,11 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 	if len(chat.Messages) > 0 {
 		chat.Messages[len(chat.Messages)-1].Stream = false
 	}
+
+	if lastEvalCount > 0 {
+		showNotification("Response ready", "Ollama has finished generating")
+	}
+
 	return s.Store.SetChat(*chat)
 }
 

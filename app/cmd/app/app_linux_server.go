@@ -38,5 +38,3 @@ func makeRestartFunc(osrv *struct{}, serverFailed bool, octx context.Context, oc
 		}
 	}
 }
-
-func isUsingManagedServer() bool { return false }

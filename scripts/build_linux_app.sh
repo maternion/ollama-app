@@ -6,6 +6,13 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/dist/linux-app"
 APPDIR="$BUILD_DIR/Ollama.AppDir"
 
+# Check for libnotify-dev (needed for desktop notifications)
+if ! pkg-config --exists libnotify 2>/dev/null; then
+    echo "WARNING: libnotify development headers not found." >&2
+    echo "  Install with: sudo apt-get install libnotify-dev" >&2
+    echo "  Notifications will be disabled in the build." >&2
+fi
+
 DIST_DIR="${DIST_DIR:-}"
 GOFLAGS="${GOFLAGS:-}"
 CGO_CFLAGS="${CGO_CFLAGS:-}"
@@ -105,7 +112,17 @@ exec "${HERE}/usr/bin/ollama-app" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
-# Step 6: Bundle shared libraries using linuxdeploy
+# Step 6: Bundle libnotify for desktop notifications
+echo "--- Bundling libnotify for notifications ---"
+if [ -d "$APPDIR/usr/lib" ]; then
+    for lib in libnotify.so.4 libnotify.so; do
+        if [ -f "/usr/lib/x86_64-linux-gnu/$lib" ]; then
+            cp "/usr/lib/x86_64-linux-gnu/$lib" "$APPDIR/usr/lib/"
+        fi
+    done
+fi
+
+# Step 7: Bundle shared libraries using linuxdeploy
 if [ -x "$LINUXDEPLOY" ]; then
     echo "--- Bundling shared library dependencies ---"
     LDP_PLUGIN="$LINGPU" "$LINUXDEPLOY" \

@@ -197,6 +197,8 @@ func osRun(shutdown func(), hasCompletedFirstRun, startHidden bool) {
 		slog.Error("failed to create system tray", "error", err)
 	}
 
+	linuxtray.InitNotifications()
+
 	if updater.IsUpdatePending() {
 		slog.Debug("update pending on startup, showing tray notification")
 		UpdateAvailable("")

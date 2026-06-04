@@ -520,6 +520,12 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 			return nil
 		})
 
+		wv.Bind("focusWindow", func() {
+			wv.Dispatch(func() {
+				wv.Eval("window.focus()")
+			})
+		})
+
 		// Debounce resize events
 		var resizeTimer *time.Timer
 		var resizeMutex sync.Mutex

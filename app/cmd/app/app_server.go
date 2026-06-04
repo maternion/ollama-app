@@ -52,5 +52,3 @@ func makeRestartFunc(osrv any, serverFailed bool, octx context.Context, ocancel 
 		}()
 	}
 }
-
-func isUsingManagedServer() bool { return true }
