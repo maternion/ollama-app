@@ -37,35 +37,6 @@ jobs:
             echo "vendorsha=$(cat LLAMA_CPP_VERSION)-$(cat MLX_VERSION)-$(cat MLX_C_VERSION)"
           } >>"${GITHUB_OUTPUT}"
 
-  darwin-build:
-    runs-on: macos-26-xlarge
-    needs: setup-environment
-    env:
-      GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
-      VERSION: ${{ needs.setup-environment.outputs.VERSION }}
-      CGO_CFLAGS: '-mmacosx-version-min=14.0 -O3'
-      CGO_CXXFLAGS: '-mmacosx-version-min=14.0 -O3'
-      CGO_LDFLAGS: '-mmacosx-version-min=14.0 -O3'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: |
-            go.sum
-            LLAMA_CPP_VERSION
-            MLX_VERSION
-            MLX_C_VERSION
-      - name: Build unsigned Darwin runtime
-        run: ./scripts/build_darwin.sh build package
-      - name: Log build results
-        run: ls -l dist/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ollama-darwin.tgz
-          path: dist/ollama-darwin.tgz
-          compression-level: 0
-
   # Build payload export stages independently and combine the exported
   # filesystem artifacts below. This preserves parallelism without Docker
   # registry credentials or oversized GitHub layer caches.
