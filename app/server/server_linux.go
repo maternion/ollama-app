@@ -42,7 +42,7 @@ func IsServerRunning(ctx context.Context) bool {
 	}
 
 	// Give the service time to become ready
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if _, err := c.Version(ctx); err == nil {
 			slog.Info("connected to systemd ollama service")
 			return true
