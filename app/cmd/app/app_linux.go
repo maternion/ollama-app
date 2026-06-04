@@ -35,6 +35,15 @@ static void show_gtk_window_idle(void *ptr) {
 	g_idle_add(_show_idle_cb, ptr);
 }
 
+static gboolean _hide_idle_cb(gpointer data) {
+	hide_gtk_window(data);
+	return G_SOURCE_REMOVE;
+}
+
+static void hide_gtk_window_idle(void *ptr) {
+	g_idle_add(_hide_idle_cb, ptr);
+}
+
 static gboolean _gtk_main_quit_idle(gpointer data) {
 	gtk_main_quit();
 	return G_SOURCE_REMOVE;
@@ -353,7 +362,7 @@ func hideWindow(ptr unsafe.Pointer) {
 	if ptr == nil {
 		return
 	}
-	C.hide_gtk_window(ptr)
+	C.hide_gtk_window_idle(ptr)
 }
 
 func runInBackground() {

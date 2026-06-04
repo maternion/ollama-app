@@ -227,34 +227,40 @@ func (b *FileBuilder) runMultiFileDlg() ([]string, error) {
 }
 
 func (b *DirectoryBuilder) browse() (string, error) {
-	title := firstOf(b.Dlg.Title, "Select Directory")
-	cTitle := C.CString(title)
-	defer C.free(unsafe.Pointer(cTitle))
-	cOpenLabel := C.CString("_Open")
-	defer C.free(unsafe.Pointer(cOpenLabel))
-	cCancelLabel := C.CString("_Cancel")
-	defer C.free(unsafe.Pointer(cCancelLabel))
+	var result string
+	var err error
+	runOnMainThread(func() {
+		title := firstOf(b.Dlg.Title, "Select Directory")
+		cTitle := C.CString(title)
+		defer C.free(unsafe.Pointer(cTitle))
+		cOpenLabel := C.CString("_Open")
+		defer C.free(unsafe.Pointer(cOpenLabel))
+		cCancelLabel := C.CString("_Cancel")
+		defer C.free(unsafe.Pointer(cCancelLabel))
 
-	dlg := C.new_file_chooser_dialog(cTitle, nil, C.GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, cCancelLabel, cOpenLabel)
-	defer C.gtk_widget_destroy(dlg)
+		dlg := C.new_file_chooser_dialog(cTitle, nil, C.GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, cCancelLabel, cOpenLabel)
+		defer C.gtk_widget_destroy(dlg)
 
-	chooser := C.cast_file_chooser(dlg)
-	if b.StartDir != "" {
-		cDir := C.CString(b.StartDir)
-		C.gtk_file_chooser_set_current_folder(chooser, cDir)
-		C.free(unsafe.Pointer(cDir))
-	}
-	if b.ShowHiddenFiles {
-		C.gtk_file_chooser_set_show_hidden(chooser, C.TRUE)
-	}
+		chooser := C.cast_file_chooser(dlg)
+		if b.StartDir != "" {
+			cDir := C.CString(b.StartDir)
+			C.gtk_file_chooser_set_current_folder(chooser, cDir)
+			C.free(unsafe.Pointer(cDir))
+		}
+		if b.ShowHiddenFiles {
+			C.gtk_file_chooser_set_show_hidden(chooser, C.TRUE)
+		}
 
-	resp := C.gtk_dialog_run(C.cast_dialog(dlg))
-	if resp == C.GTK_RESPONSE_ACCEPT {
-		filename := C.gtk_file_chooser_get_filename(chooser)
-		defer C.g_free(C.gpointer(filename))
-		return C.GoString(filename), nil
-	}
-	return "", ErrCancelled
+		resp := C.gtk_dialog_run(C.cast_dialog(dlg))
+		if resp == C.GTK_RESPONSE_ACCEPT {
+			filename := C.gtk_file_chooser_get_filename(chooser)
+			defer C.g_free(C.gpointer(filename))
+			result = C.GoString(filename)
+		} else {
+			err = ErrCancelled
+		}
+	})
+	return result, err
 }
 
 func addFileFilters(chooser *C.GtkFileChooser, filters []FileFilter) {
