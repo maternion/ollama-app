@@ -3,9 +3,9 @@ import { useRenameChat } from "@/hooks/useRenameChat";
 import { useDeleteChat } from "@/hooks/useDeleteChat";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { getChat } from "@/api";
 import { Link } from "@/components/ui/link";
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { ChatsResponse } from "@/gotypes";
 import { CogIcon, RocketLaunchIcon } from "@heroicons/react/24/outline";
 import { useMatchRoute } from "@tanstack/react-router";
@@ -32,6 +32,7 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [pendingDeleteTitle, setPendingDeleteTitle] = useState<string>("");
   const [shiftClicks, setShiftClicks] = useState<Record<string, number[]>>({});
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleMouseEnter = useCallback(
     (chatId: string) => {

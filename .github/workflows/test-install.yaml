@@ -22,7 +22,7 @@ jobs:
         env:
           OLLAMA_NO_START: 1
           OLLAMA_NO_APP: 1
-          OLLAMA_VERSION: 0.24.0
+          OLLAMA_VERSION: v0.24.0
       - name: Verify ollama is available
         run: |
           command -v ollama
