@@ -18,8 +18,10 @@ func init() {
 	restartService = RestartSystemdService
 }
 
-const systemdDropInDir = "/etc/systemd/system/ollama.service.d"
-const systemdDropInFile = systemdDropInDir + "/app.conf"
+const (
+	systemdDropInDir  = "/etc/systemd/system/ollama.service.d"
+	systemdDropInFile = systemdDropInDir + "/app.conf"
+)
 
 // ReadSystemdServiceEnv reads an environment variable from the ollama systemd service (running or not).
 func ReadSystemdServiceEnv(key string) string {

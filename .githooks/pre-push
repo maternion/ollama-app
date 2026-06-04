@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+if [ -z "$CHANGED" ]; then
+    exit 0
+fi
+
+UNFMT=$(gofmt -l $CHANGED)
+if [ -n "$UNFMT" ]; then
+    echo "ERROR: gofmt violations in:"
+    echo "$UNFMT"
+    echo "Run: gofmt -w $UNFMT"
+    exit 1
+fi
+
+if command -v gofumpt >/dev/null 2>&1; then
+    UNFUMPT=$(gofumpt -l $CHANGED)
+    if [ -n "$UNFUMPT" ]; then
+        echo "ERROR: gofumpt violations in:"
+        echo "$UNFUMPT"
+        echo "Run: gofumpt -w $UNFUMPT"
+        exit 1
+    fi
+fi

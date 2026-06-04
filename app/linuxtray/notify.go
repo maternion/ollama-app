@@ -44,10 +44,10 @@ import (
 )
 
 var (
-	notifyLoaded   bool
-	notifyInit     func(appName string) bool
-	notifyNew      func(title, body, icon string) unsafe.Pointer
-	notifyShow     func(n unsafe.Pointer) bool
+	notifyLoaded     bool
+	notifyInit       func(appName string) bool
+	notifyNew        func(title, body, icon string) unsafe.Pointer
+	notifyShow       func(n unsafe.Pointer) bool
 	notifySetTimeout func(n unsafe.Pointer, ms int)
 	notifySetUrgency func(n unsafe.Pointer, urgency int)
 )
@@ -148,8 +148,8 @@ func ShowNotification(title, body string) {
 		return
 	}
 
-	notifySetTimeout(n, -1)   // NOTIFY_EXPIRES_DEFAULT
-	notifySetUrgency(n, 1)     // NOTIFY_URGENCY_NORMAL
+	notifySetTimeout(n, -1) // NOTIFY_EXPIRES_DEFAULT
+	notifySetUrgency(n, 1)  // NOTIFY_URGENCY_NORMAL
 
 	if !notifyShow(n) {
 		slog.Warn("failed to show notification", "title", title)
