@@ -2,7 +2,21 @@ import Logo from "@/components/Logo";
 import { ModelPicker } from "@/components/ModelPicker";
 import { WebSearchButton } from "@/components/WebSearchButton";
 import { ImageThumbnail } from "@/components/ImageThumbnail";
-import { isImageFile } from "@/utils/imageUtils";
+import { AudioThumbnail } from "@/components/AudioThumbnail";
+import { FileAttachmentMenu } from "@/components/FileAttachmentMenu";
+import { isImageFile, isAudioFile } from "@/utils/imageUtils";
+import {
+  useHasVisionCapability,
+  useHasToolsCapability,
+  useHasAudioCapability,
+} from "@/hooks/useModelCapabilities";
+import { useUser } from "@/hooks/useUser";
+import { DisplayLogin } from "@/components/DisplayLogin";
+import { ErrorEvent, Message } from "@/gotypes";
+import { useSettings } from "@/hooks/useSettings";
+import { useCloudStatus } from "@/hooks/useCloudStatus";
+import { ThinkButton } from "./ThinkButton";
+import { ErrorMessage } from "./ErrorMessage";
 import {
   useRef,
   useState,
@@ -17,20 +31,6 @@ import {
 } from "@/hooks/useChats";
 import { useNavigate } from "@tanstack/react-router";
 import { useSelectedModel } from "@/hooks/useSelectedModel";
-import {
-  useHasVisionCapability,
-  useHasToolsCapability,
-} from "@/hooks/useModelCapabilities";
-import { useUser } from "@/hooks/useUser";
-import { DisplayLogin } from "@/components/DisplayLogin";
-import { ErrorEvent, Message } from "@/gotypes";
-import { useSettings } from "@/hooks/useSettings";
-import { useCloudStatus } from "@/hooks/useCloudStatus";
-import { ThinkButton } from "./ThinkButton";
-import { ErrorMessage } from "./ErrorMessage";
-import { processFiles } from "@/utils/fileValidation";
-import type { ImageData } from "@/types/webview";
-import { PlusIcon } from "@heroicons/react/24/outline";
 
 export type ThinkingLevel = "low" | "medium" | "high";
 
@@ -114,6 +114,7 @@ function ChatForm({
   const isDownloading = isDownloadingModel;
   const { selectedModel } = useSelectedModel();
   const hasVisionCapability = useHasVisionCapability(selectedModel?.model);
+  const hasAudioCapability = useHasAudioCapability(selectedModel?.model);
   const { isAuthenticated, isLoading: isLoadingUser } = useUser();
   const [loginPromptFeature, setLoginPromptFeature] = useState<
     "webSearch" | "turbo" | null
@@ -483,7 +484,9 @@ function ChatForm({
     // Prepare attachments for submission, excluding unsupported images
     const attachmentsToSend: FileAttachment[] = message.attachments
       .filter(
-        (att) => hasVisionCapability || !isImageFile(att.filename),
+        (att) =>
+          (hasVisionCapability || !isImageFile(att.filename)) &&
+          (hasAudioCapability || !isAudioFile(att.filename)),
       )
       .map((att) => ({
         filename: att.filename,
@@ -634,62 +637,6 @@ function ChatForm({
     e.target.style.height = Math.min(e.target.scrollHeight, 24 * 8) + "px";
   };
 
-  const handleFilesUpload = async () => {
-    try {
-      setFileUploadError(null);
-
-      const results = await window.webview?.selectMultipleFiles();
-      if (results && results.length > 0) {
-        // Convert native dialog results to File objects
-        const files = results
-          .map((result: ImageData) => {
-            if (result.dataURL) {
-              // Convert dataURL back to File object
-              const base64Data = result.dataURL.split(",")[1];
-              const mimeType = result.dataURL.split(";")[0].split(":")[1];
-              const binaryString = atob(base64Data);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-
-              const blob = new Blob([bytes], { type: mimeType });
-              const file = new File([blob], result.filename, {
-                type: mimeType,
-              });
-              return file;
-            }
-            return null;
-          })
-          .filter(Boolean) as File[];
-
-        if (files.length > 0) {
-          const { validFiles, errors } = await processFiles(files, {
-            selectedModel,
-            hasVisionCapability,
-          });
-
-          // Send processed files and errors to the same handler as FileUpload
-          if (validFiles.length > 0 || errors.length > 0) {
-            handleFilesReceived(validFiles, errors);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error selecting multiple files:", error);
-
-      const errorEvent = new ErrorEvent({
-        eventName: "error" as const,
-        error:
-          error instanceof Error ? error.message : "Failed to select files",
-        code: "file_selection_error",
-        details:
-          "An error occurred while trying to open the file selection dialog. Please try again.",
-      });
-
-      setFileUploadError(errorEvent);
-    }
-  };
   return (
     <div className={`pb-3 px-3 ${hasMessages ? "mt-auto" : "my-auto"}`}>
       {chatId === "new" && <Logo />}
@@ -738,14 +685,17 @@ function ChatForm({
         )}
         {(message.attachments.length > 0 || message.fileErrors.length > 0) && (
           <div className="flex gap-2 overflow-x-auto px-3 pt pb-3 w-full scrollbar-hide">
-            {message.attachments.map((attachment, index) => {
+            {message.attachments.map((attachment: { id: string; filename: string; data?: Uint8Array }, index: number) => {
               const isUnsupportedImage =
                 !hasVisionCapability && isImageFile(attachment.filename);
+              const isUnsupportedAudio =
+                !hasAudioCapability && isAudioFile(attachment.filename);
+              const isUnsupported = isUnsupportedImage || isUnsupportedAudio;
               return (
               <div
                 key={attachment.id}
                 className={`group flex items-center gap-2 py-2 px-3 rounded-lg transition-colors flex-shrink-0 ${
-                  isUnsupportedImage
+                  isUnsupported
                     ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
                     : "bg-neutral-50 dark:bg-neutral-700/50 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 }`}
@@ -758,6 +708,8 @@ function ChatForm({
                     }}
                     className="w-8 h-8 object-cover rounded-md flex-shrink-0"
                   />
+                ) : isAudioFile(attachment.filename) ? (
+                  <AudioThumbnail className="w-8 h-8" />
                 ) : (
                   <svg
                     className="w-4 h-4 text-neutral-400 dark:text-neutral-500 flex-shrink-0"
@@ -774,12 +726,17 @@ function ChatForm({
                   </svg>
                 )}
                 <div className="flex flex-col min-w-0">
-                  <span className={`text-sm max-w-36 truncate ${isUnsupportedImage ? "text-red-700 dark:text-red-300" : "text-neutral-700 dark:text-neutral-300"}`}>
+                  <span className={`text-sm max-w-36 truncate ${isUnsupported ? "text-red-700 dark:text-red-300" : "text-neutral-700 dark:text-neutral-300"}`}>
                     {attachment.filename}
                   </span>
                   {isUnsupportedImage && (
                     <span className="text-xs text-red-600 dark:text-red-400 opacity-75">
                       This model does not support images
+                    </span>
+                  )}
+                  {isUnsupportedAudio && (
+                    <span className="text-xs text-red-600 dark:text-red-400 opacity-75">
+                      This model does not support audio
                     </span>
                   )}
                 </div>
@@ -806,7 +763,7 @@ function ChatForm({
               </div>
               );
             })}
-            {message.fileErrors.map((fileError, index) => (
+            {message.fileErrors.map((fileError: { filename: string; error: string }, index: number) => (
               <div
                 key={`error-${index}`}
                 className="group flex items-center gap-2 py-2 px-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
@@ -879,14 +836,11 @@ function ChatForm({
             <div className="flex-1 flex justify-end items-center gap-2">
               <div className={`flex gap-2`}>
                 {/* File Upload Buttons */}
-                <button
-                  type="button"
-                  onClick={handleFilesUpload}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer border border-transparent"
-                  title="Upload multiple files"
-                >
-                  <PlusIcon className="w-4.5 h-4.5 stroke-2 text-neutral-500 dark:text-neutral-400" />
-                </button>
+                <FileAttachmentMenu
+                  onFilesReceived={handleFilesReceived}
+                  hasVisionCapability={hasVisionCapability}
+                  selectedModel={selectedModel?.model ?? ""}
+                />
                 {/* Thinking Level Button */}
                 {modelSupportsThinkingLevels && (
                   <>

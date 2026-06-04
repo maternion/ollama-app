@@ -42,11 +42,13 @@ export const TEXT_FILE_EXTENSIONS = [
 ];
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp"];
+export const AUDIO_EXTENSIONS = ["wav", "mp3", "ogg"];
 
 export interface FileValidationOptions {
   maxFileSize?: number; // in MB
   allowedExtensions?: string[];
   hasVisionCapability?: boolean;
+  hasAudioCapability?: boolean;
   selectedModel?: Model | null;
   customValidator?: (file: File) => { valid: boolean; error?: string };
 }
@@ -62,7 +64,7 @@ export function validateFile(
 ): ValidationResult {
   const {
     maxFileSize = 10,
-    allowedExtensions = [...TEXT_FILE_EXTENSIONS, ...IMAGE_EXTENSIONS],
+    allowedExtensions = [...TEXT_FILE_EXTENSIONS, ...IMAGE_EXTENSIONS, ...AUDIO_EXTENSIONS],
     customValidator,
   } = options;
 

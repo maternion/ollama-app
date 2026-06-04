@@ -357,6 +357,107 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 			}()
 		})
 
+		// Bind selectAudioFile function for selecting a single audio file
+		wv.Bind("selectAudioFile", func() {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__selectAudioFileCallback && window.__selectAudioFileCallback(%s)", dataJSON))
+					})
+				}
+
+				filename, err := dialog.File().
+					Filter("Audio Files", "wav", "mp3", "ogg").
+					Title("Select Audio File").
+					Load()
+				if err != nil {
+					slog.Debug("Audio file selection cancelled or failed", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				fileBytes, err := os.ReadFile(filename)
+				if err != nil {
+					slog.Error("failed to read audio file", "error", err, "filename", filename)
+					callCallback(nil)
+					return
+				}
+
+				mimeType := http.DetectContentType(fileBytes)
+				dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(fileBytes))
+
+				fileResult := map[string]string{
+					"filename": filepath.Base(filename),
+					"path":     filename,
+					"dataURL":  dataURL,
+				}
+				callCallback(fileResult)
+			}()
+		})
+
+		// Bind selectImageFiles function for selecting multiple image files only
+		wv.Bind("selectImageFiles", func() {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__selectImageFilesCallback && window.__selectImageFilesCallback(%s)", dataJSON))
+					})
+				}
+
+				imageExts := []string{"png", "jpg", "jpeg", "webp", "gif"}
+
+				filenames, err := dialog.File().
+					Filter("Image Files", imageExts...).
+					Title("Select Images").
+					LoadMultiple()
+				if err != nil {
+					slog.Debug("Image file selection cancelled or failed", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				if len(filenames) == 0 {
+					callCallback(nil)
+					return
+				}
+
+				var files []map[string]string
+				maxFileSize := int64(10 * 1024 * 1024) // 10MB
+
+				for _, filename := range filenames {
+					fileBytes, err := os.ReadFile(filename)
+					if err != nil {
+						slog.Error("failed to read image file", "error", err, "filename", filename)
+						continue
+					}
+
+					if int64(len(fileBytes)) > maxFileSize {
+						slog.Warn("image file too large, skipping", "filename", filepath.Base(filename), "size", len(fileBytes))
+						continue
+					}
+
+					mimeType := http.DetectContentType(fileBytes)
+					dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(fileBytes))
+
+					fileResult := map[string]string{
+						"filename": filepath.Base(filename),
+						"path":     filename,
+						"dataURL":  dataURL,
+					}
+
+					files = append(files, fileResult)
+				}
+
+				if len(files) == 0 {
+					callCallback(nil)
+				} else {
+					callCallback(files)
+				}
+			}()
+		})
+
 		wv.Bind("drag", func() {
 			wv.Dispatch(func() {
 				drag(wv.Window())

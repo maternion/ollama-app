@@ -1731,6 +1731,11 @@ func isImageAttachment(filename string) bool {
 	return strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") || strings.HasSuffix(ext, ".webp")
 }
 
+func isAudioAttachment(filename string) bool {
+	ext := strings.ToLower(filename)
+	return strings.HasSuffix(ext, ".wav") || strings.HasSuffix(ext, ".mp3") || strings.HasSuffix(ext, ".ogg")
+}
+
 // ptr is a convenience function for &literal
 func ptr[T any](v T) *T { return &v }
 
@@ -1756,7 +1761,7 @@ func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, ava
 		var images []api.ImageData
 		if m.Role == "user" && len(m.Attachments) > 0 {
 			for _, a := range m.Attachments {
-				if isImageAttachment(a.Filename) {
+				if isImageAttachment(a.Filename) || isAudioAttachment(a.Filename) {
 					images = append(images, api.ImageData(a.Data))
 				} else {
 					content := convertBytesToText(a.Data, a.Filename)

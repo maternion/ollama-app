@@ -15,6 +15,8 @@ interface MenuItem {
 interface WebviewAPI {
   selectFile: () => Promise<ImageData | null>;
   selectMultipleFiles: () => Promise<ImageData[] | null>;
+  selectImageFiles: () => Promise<ImageData[] | null>;
+  selectAudioFile: () => Promise<ImageData | null>;
   selectModelsDirectory: () => Promise<string | null>;
   selectWorkingDirectory: () => Promise<string | null>;
 }

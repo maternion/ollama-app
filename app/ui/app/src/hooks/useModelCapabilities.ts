@@ -25,3 +25,8 @@ export function useHasToolsCapability(modelName: string | undefined) {
   const { data: capabilitiesResponse } = useModelCapabilities(modelName);
   return capabilitiesResponse?.capabilities?.includes("tools") ?? false;
 }
+
+export function useHasAudioCapability(modelName: string | undefined) {
+  const { data: capabilitiesResponse } = useModelCapabilities(modelName);
+  return capabilitiesResponse?.capabilities?.includes("audio") ?? false;
+}

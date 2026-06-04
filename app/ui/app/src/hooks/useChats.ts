@@ -671,10 +671,6 @@ export const useSendMessage = (chatId: string) => {
               newMap.delete(currentChatId);
               return newMap;
             });
-            // Ensure chat is fresh for next fetch
-            queryClient.invalidateQueries({
-              queryKey: ["chat", currentChatId],
-            });
 
             // If server didn't compute stats, compute client-side and persist on message
             if (streamStartTime !== null && tokenCount > 0) {
