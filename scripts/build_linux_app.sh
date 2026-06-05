@@ -131,7 +131,7 @@ if [ -x "$LINUXDEPLOY" ]; then
         --icon-file "$APPDIR/ollama.png" \
         --output appimage \
         2>&1
-    mv "$APPDIR/../Ollama-x86_64.AppImage" "$BUILD_DIR/ollama-linux-amd64.AppImage" 2>/dev/null || true
+    mv "$ROOT_DIR/Ollama"*.AppImage "$BUILD_DIR/ollama-linux-amd64.AppImage" 2>/dev/null || true
     echo "=== AppImage created: $BUILD_DIR/ollama-linux-amd64.AppImage ==="
 elif command -v appimagetool &>/dev/null; then
     echo "--- linuxdeploy not found; using appimagetool (no bundled libs) ---"

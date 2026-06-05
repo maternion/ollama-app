@@ -213,6 +213,9 @@ configure_app() {
     $SUDO cp "$TEMP_DIR/ollama-app.AppImage" /opt/ollama/ollama-app.AppImage
     $SUDO chmod +x /opt/ollama/ollama-app.AppImage
 
+    status "Restarting running desktop app to pick up update..."
+    pkill -x ollama-app 2>/dev/null || true
+
     (cd "$TEMP_DIR" && ./ollama-app.AppImage --appimage-extract 'usr/share/icons/*' > /dev/null 2>&1 || true)
     (cd "$TEMP_DIR" && ./ollama-app.AppImage --appimage-extract 'usr/share/applications/*' > /dev/null 2>&1 || true)
     if [ -d "$TEMP_DIR/squashfs-root/usr/share/icons" ]; then
