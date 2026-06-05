@@ -35,6 +35,8 @@ var (
 	wv           = &Webview{}
 	uiServerPort int
 	appStore     *store.Store
+	appUpdater   *updater.Updater
+	uiServerRef  *ui.Server
 )
 
 var debug = strings.EqualFold(os.Getenv("OLLAMA_DEBUG"), "true") || os.Getenv("OLLAMA_DEBUG") == "1"
@@ -245,10 +247,11 @@ func main() {
 	osrv, serverFailed := startManagedServer(ctx, octx, st, devMode, done)
 
 	upd := &updater.Updater{Store: st}
+	appUpdater = upd
 
 	uiServer := ui.Server{
-		Token: token,
-		Restart: makeRestartFunc(osrv, serverFailed, octx, ocancel, done, ctx, st),
+		Token:        token,
+		Restart:      makeRestartFunc(osrv, serverFailed, octx, ocancel, done, ctx, st),
 		Store:        st,
 		ToolRegistry: toolRegistry,
 		Dev:          devMode,
@@ -258,6 +261,7 @@ func main() {
 			UpdateAvailable("")
 		},
 	}
+	uiServerRef = &uiServer
 
 	srv := &http.Server{
 		Handler: uiServer.Handler(),

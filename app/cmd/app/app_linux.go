@@ -52,10 +52,29 @@ static gboolean _gtk_main_quit_idle(gpointer data) {
 static void gtk_main_quit_idle(void) {
 	g_idle_add(_gtk_main_quit_idle, NULL);
 }
+
+extern void goWindowFocusIn();
+extern void goWindowFocusOut();
+
+static gboolean _focus_in_cb(GtkWidget *widget, GdkEventFocus *event, gpointer user_data) {
+	goWindowFocusIn();
+	return FALSE;
+}
+
+static gboolean _focus_out_cb(GtkWidget *widget, GdkEventFocus *event, gpointer user_data) {
+	goWindowFocusOut();
+	return FALSE;
+}
+
+static void connect_focus_signals(void *window_ptr) {
+	g_signal_connect(G_OBJECT(window_ptr), "focus-in-event", G_CALLBACK(_focus_in_cb), NULL);
+	g_signal_connect(G_OBJECT(window_ptr), "focus-out-event", G_CALLBACK(_focus_out_cb), NULL);
+}
 */
 import "C"
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -69,6 +88,8 @@ import (
 	"unsafe"
 
 	"github.com/ollama/ollama/app/linuxtray"
+	"github.com/ollama/ollama/app/ui"
+	"github.com/ollama/ollama/app/ui/responses"
 	"github.com/ollama/ollama/app/updater"
 	"github.com/ollama/ollama/app/version"
 )
@@ -140,6 +161,39 @@ func (*appCallbacks) DoUpdate() {
 	openInBrowser("https://ollama.com/download")
 }
 
+//export goWindowFocusIn
+func goWindowFocusIn() {
+	ui.WindowFocused.Store(true)
+}
+
+//export goWindowFocusOut
+func goWindowFocusOut() {
+	ui.WindowFocused.Store(false)
+}
+
+func (ac *appCallbacks) CheckForUpdates() {
+	slog.Info("manual update check triggered")
+	if appUpdater == nil || uiServerRef == nil {
+		return
+	}
+	go func() {
+		info, err := appUpdater.CheckForUpdatesSync(context.Background())
+		updateInfo := responses.UpdateInfo{}
+		if err != nil {
+			slog.Warn("update check failed", "error", err)
+			linuxtray.ShowNotification("Update Check Failed", err.Error())
+			updateInfo.Error = err.Error()
+		} else if info != nil {
+			updateInfo.Version = info.Version
+			updateInfo.DownloadURL = info.DownloadURL
+			slog.Info("update found", "version", info.Version)
+		} else {
+			slog.Info("no update available")
+		}
+		uiServerRef.SetUpdateInfo(updateInfo)
+	}()
+}
+
 func maybeMoveAndRestart() appMove {
 	return CannotMove
 }
@@ -177,16 +231,29 @@ func ollamaPidRunning(pid int) bool {
 		return false
 	}
 	comm := strings.TrimSpace(string(output))
-	// The running process could be "ollama-app", "Ollama" (AppImage runtime),
-	// or have a path prefix. Check the base name.
 	return comm != "" && strings.Contains(comm, "ollama")
 }
 
 func installSymlink() {}
 
 func UpdateAvailable(ver string) error {
+	slog.Debug("update available notification", "version", ver)
 	if tray != nil {
-		return tray.UpdateAvailable(ver)
+		tray.UpdateAvailable(ver)
+	}
+	if appUpdater != nil && uiServerRef != nil {
+		go func() {
+			info, err := appUpdater.CheckForUpdatesSync(context.Background())
+			updateInfo := responses.UpdateInfo{}
+			if err != nil {
+				slog.Warn("update check failed", "error", err)
+				updateInfo.Error = err.Error()
+			} else if info != nil {
+				updateInfo.Version = info.Version
+				updateInfo.DownloadURL = info.DownloadURL
+			}
+			uiServerRef.SetUpdateInfo(updateInfo)
+		}()
 	}
 	return nil
 }
@@ -250,13 +317,16 @@ func osRun(shutdown func(), hasCompletedFirstRun, startHidden bool) {
 
 	if !startHidden {
 		ptr := wv.Run("/")
-		if ptr != nil && tray != nil {
-			iconDir := tray.GetIconDir()
-			if iconDir != "" {
-				iconPath := filepath.Join(iconDir, "ollama-tray.png")
-				cIconPath := C.CString(iconPath)
-				C.set_window_icon_from_file(ptr, cIconPath)
-				C.free(unsafe.Pointer(cIconPath))
+		if ptr != nil {
+			C.connect_focus_signals(ptr)
+			if tray != nil {
+				iconDir := tray.GetIconDir()
+				if iconDir != "" {
+					iconPath := filepath.Join(iconDir, "ollama-tray.png")
+					cIconPath := C.CString(iconPath)
+					C.set_window_icon_from_file(ptr, cIconPath)
+					C.free(unsafe.Pointer(cIconPath))
+				}
 			}
 		}
 	}
@@ -378,8 +448,7 @@ func runInBackground() {
 	}
 }
 
-func drag(ptr unsafe.Pointer) {}
-
+func drag(ptr unsafe.Pointer)        {}
 func doubleClick(ptr unsafe.Pointer) {}
 
 func checkAndHandleExistingInstance(urlSchemeRequest string) bool {

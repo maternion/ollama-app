@@ -4,6 +4,7 @@ import { FileUpload } from "./FileUpload";
 import { DisplayUpgrade } from "./DisplayUpgrade";
 import { DisplayStale } from "./DisplayStale";
 import { DisplayLogin } from "./DisplayLogin";
+import { UpdateBanner } from "./UpdateBanner";
 import {
   useChat,
   useSendMessage,
@@ -240,6 +241,9 @@ export default function Chat({ chatId }: { chatId: string }) {
           </section>
 
           <div className="flex-shrink-0 sticky bottom-0 z-20">
+            <div className="pb-2">
+              <UpdateBanner />
+            </div>
             {selectedModel && shouldShowStaleDisplay && (
               <div className="pb-2">
                 <DisplayStale

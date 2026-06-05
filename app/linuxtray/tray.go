@@ -119,6 +119,7 @@ type AppCallbacks interface {
 	UIRunning() bool
 	Quit()
 	DoUpdate()
+	CheckForUpdates()
 }
 
 var (
@@ -215,6 +216,11 @@ func (t *Tray) createMenu() {
 
 	C.add_menu_item(shell, C.CString("Settings..."),
 		C.int(registerCallback(func() { t.app.UIRun("/settings") })))
+
+	C.add_menu_separator(shell)
+
+	C.add_menu_item(shell, C.CString("Check for Updates..."),
+		C.int(registerCallback(func() { t.app.CheckForUpdates() })))
 
 	C.add_menu_separator(shell)
 

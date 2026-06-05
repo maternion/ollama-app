@@ -137,6 +137,15 @@ type Error struct {
 	Error string `json:"error"`
 }
 
+type UpdateInfo struct {
+	Version       string `json:"version,omitempty"`
+	DownloadURL   string `json:"downloadUrl,omitempty"`
+	Downloading   bool   `json:"downloading"`
+	Downloaded    bool   `json:"downloaded"`
+	DownloadBytes int64  `json:"downloadBytes,omitempty"`
+	Error         string `json:"error,omitempty"`
+}
+
 type ModelUpstreamResponse struct {
 	Stale bool   `json:"stale"`
 	Error string `json:"error,omitempty"`

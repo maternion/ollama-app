@@ -563,6 +563,24 @@ export class Error {
         this.error = source["error"];
     }
 }
+export class UpdateInfo {
+    version?: string;
+    downloadUrl?: string;
+    downloading: boolean;
+    downloaded: boolean;
+    downloadBytes?: number;
+    error?: string;
+
+    constructor(source: any = {}) {
+        if ('string' === typeof source) source = JSON.parse(source);
+        this.version = source["version"];
+        this.downloadUrl = source["downloadUrl"];
+        this.downloading = source["downloading"];
+        this.downloaded = source["downloaded"];
+        this.downloadBytes = source["downloadBytes"];
+        this.error = source["error"];
+    }
+}
 export class ModelUpstreamResponse {
     stale: boolean;
     error?: string;

@@ -13,12 +13,15 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -101,18 +104,22 @@ type Server struct {
 	Token        string
 	Store        *store.Store
 	ToolRegistry *tools.Registry
-	Tools        bool   // if true, the server will use single-turn tools to fulfill the user's request
-	WebSearch    bool   // if true, the server will use single-turn browser tool to fulfill the user's request
-	Agent        bool   // if true, the server will use multi-turn tools to fulfill the user's request
-	WorkingDir   string // Working directory for all agent operations
+	Tools        bool
+	WebSearch    bool
+	Agent        bool
+	WorkingDir   string
+	Dev          bool
 
-	// Dev is true if the server is running in development mode
-	Dev bool
-
-	// Updater for checking and downloading updates
 	Updater             *updater.Updater
 	UpdateAvailableFunc func()
+
+	updateInfo   responses.UpdateInfo
+	updateInfoMu sync.RWMutex
 }
+
+// WindowFocused tracks whether the app window has keyboard focus.
+// Used to suppress "Response ready" notifications when the user is actively watching.
+var WindowFocused atomic.Bool
 
 func (s *Server) log() *slog.Logger {
 	if s.Logger == nil {
@@ -292,6 +299,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/settings", handle(s.settings))
 	mux.Handle("GET /api/v1/cloud", handle(s.getCloudSetting))
 	mux.Handle("POST /api/v1/cloud", handle(s.cloudSetting))
+
+	mux.Handle("GET /api/v1/update", handle(s.getUpdateInfo))
+	mux.Handle("POST /api/v1/update/check", handle(s.checkUpdate))
+	mux.Handle("POST /api/v1/update/download", handle(s.downloadUpdate))
+	mux.Handle("POST /api/v1/update/install", handle(s.installUpdate))
 
 	// Ollama proxy endpoints
 	ollamaProxy := s.ollamaProxy()
@@ -1277,7 +1289,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 		chat.Messages[len(chat.Messages)-1].Stream = false
 	}
 
-	if lastEvalCount > 0 {
+	if lastEvalCount > 0 && !WindowFocused.Load() {
 		showNotification("Response ready", "Ollama has finished generating")
 	}
 
@@ -1476,6 +1488,103 @@ func chatInfoFromChat(chat store.Chat) responses.ChatInfo {
 		CreatedAt:   chat.CreatedAt,
 		UpdatedAt:   updatedAt,
 	}
+}
+
+func (s *Server) SetUpdateInfo(info responses.UpdateInfo) {
+	s.updateInfoMu.Lock()
+	defer s.updateInfoMu.Unlock()
+	s.updateInfo = info
+}
+
+func (s *Server) getUpdateInfo(w http.ResponseWriter, r *http.Request) error {
+	s.updateInfoMu.RLock()
+	info := s.updateInfo
+	s.updateInfoMu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(info)
+}
+
+func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) error {
+	if s.Updater == nil {
+		return fmt.Errorf("updater not available")
+	}
+	info, err := s.Updater.CheckForUpdatesSync(r.Context())
+	if err != nil {
+		s.log().Warn("update check failed", "error", err)
+		return err
+	}
+	resp := responses.UpdateInfo{}
+	if info != nil {
+		resp.Version = info.Version
+		resp.DownloadURL = info.DownloadURL
+	}
+	s.SetUpdateInfo(resp)
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) error {
+	if s.Updater == nil {
+		return fmt.Errorf("updater not available")
+	}
+	s.updateInfoMu.RLock()
+	info := s.updateInfo
+	s.updateInfoMu.RUnlock()
+	if info.DownloadURL == "" {
+		return fmt.Errorf("no download URL available")
+	}
+
+	s.updateInfoMu.Lock()
+	s.updateInfo.Downloading = true
+	s.updateInfoMu.Unlock()
+
+	dest := filepath.Join(os.TempDir(), fmt.Sprintf("ollama-update-%s.AppImage", info.Version))
+	go func() {
+		err := s.Updater.DownloadRelease(r.Context(), info.DownloadURL, dest)
+		s.updateInfoMu.Lock()
+		if err != nil {
+			s.log().Error("download failed", "error", err)
+			s.updateInfo.Downloading = false
+			s.updateInfo = responses.UpdateInfo{}
+		} else {
+			s.log().Info("update downloaded", "path", dest)
+			s.updateInfo.Downloading = false
+			s.updateInfo.Downloaded = true
+			s.updateInfo.DownloadBytes = 0
+		}
+		s.updateInfoMu.Unlock()
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(responses.UpdateInfo{Downloading: true})
+}
+
+func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
+	s.updateInfoMu.RLock()
+	info := s.updateInfo
+	s.updateInfoMu.RUnlock()
+	if !info.Downloaded || info.Version == "" {
+		return fmt.Errorf("no downloaded update available")
+	}
+	dest := filepath.Join(os.TempDir(), fmt.Sprintf("ollama-update-%s.AppImage", info.Version))
+	if _, err := os.Stat(dest); err != nil {
+		return fmt.Errorf("update file not found: %w", err)
+	}
+
+	s.log().Info("installing update via OS", "appImage", dest)
+	go func() {
+		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf(`"%s" &`, dest))
+		if err := cmd.Start(); err != nil {
+			s.log().Error("failed to launch updated AppImage", "error", err)
+			return
+		}
+		if s.UpdateAvailableFunc != nil {
+			s.UpdateAvailableFunc()
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(map[string]bool{"installing": true})
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
