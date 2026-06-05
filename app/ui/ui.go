@@ -1584,13 +1584,30 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("update file not found: %w", err)
 	}
 
-	s.log().Info("installing update via OS", "appImage", dest)
+	s.log().Info("installing update", "appImage", dest)
 	go func() {
-		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf(`"%s" &`, dest))
+		s.log().Info("killing running ollama-app")
+		exec.Command("pkill", "-x", "ollama-app").Run()
+		time.Sleep(500 * time.Millisecond)
+
+		installedPath := dest
+		if _, err := os.Stat("/opt/ollama"); err == nil {
+			cmd := exec.Command("pkexec", "cp", dest, "/opt/ollama/ollama-app.AppImage")
+			if err := cmd.Run(); err == nil {
+				exec.Command("pkexec", "chmod", "+x", "/opt/ollama/ollama-app.AppImage").Run()
+				installedPath = "/opt/ollama/ollama-app.AppImage"
+				s.log().Info("copied update to /opt/ollama/")
+			} else {
+				s.log().Warn("pkexec cp failed, launching from temp", "error", err)
+			}
+		}
+
+		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf(`"%s" &`, installedPath))
 		if err := cmd.Start(); err != nil {
 			s.log().Error("failed to launch updated AppImage", "error", err)
 			return
 		}
+		s.log().Info("launched updated AppImage, current instance should terminate")
 		if s.UpdateAvailableFunc != nil {
 			s.UpdateAvailableFunc()
 		}

@@ -209,12 +209,13 @@ configure_app() {
 
     chmod +x "$TEMP_DIR/ollama-app.AppImage"
 
+    status "Stopping running desktop app..."
+    pkill -x ollama-app 2>/dev/null || true
+    sleep 1
+
     $SUDO mkdir -p /opt/ollama
     $SUDO cp "$TEMP_DIR/ollama-app.AppImage" /opt/ollama/ollama-app.AppImage
     $SUDO chmod +x /opt/ollama/ollama-app.AppImage
-
-    status "Restarting running desktop app to pick up update..."
-    pkill -x ollama-app 2>/dev/null || true
 
     (cd "$TEMP_DIR" && ./ollama-app.AppImage --appimage-extract 'usr/share/icons/*' > /dev/null 2>&1 || true)
     (cd "$TEMP_DIR" && ./ollama-app.AppImage --appimage-extract 'usr/share/applications/*' > /dev/null 2>&1 || true)
