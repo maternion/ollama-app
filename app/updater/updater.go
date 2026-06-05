@@ -348,7 +348,7 @@ func (u *Updater) TriggerImmediateCheck() {
 
 // GitHubReleaseURL is the API endpoint for checking the latest release version.
 // Override this to point to a fork's releases (e.g. maternion/ollama-app).
-var GitHubReleaseURL = "https://api.github.com/repos/ollama/ollama/releases/latest"
+var GitHubReleaseURL = "https://api.github.com/repos/maternion/ollama-app/releases/latest"
 
 // GitHubReleaseAssetPattern is the filename pattern for the Linux AppImage asset.
 // Override this when switching to a fork that names assets differently.

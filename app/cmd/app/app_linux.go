@@ -157,8 +157,8 @@ func (ac *appCallbacks) Quit() {
 }
 
 func (*appCallbacks) DoUpdate() {
-	slog.Info("auto-update not supported on Linux, opening browser")
-	openInBrowser("https://ollama.com/download")
+	slog.Info("opening browser to download page")
+	openInBrowser("https://github.com/maternion/ollama-app/releases")
 }
 
 //export goWindowFocusIn
