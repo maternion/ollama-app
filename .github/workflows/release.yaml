@@ -46,6 +46,10 @@ jobs:
             LLAMA_CPP_VERSION
             MLX_VERSION
             MLX_C_VERSION
+      - name: Install tscriptify
+        run: |
+          go install github.com/tkrajina/typescriptify-golang-structs/tscriptify@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       - name: Build Linux app
         run: ./scripts/build_linux_app.sh
       - name: Log build results
