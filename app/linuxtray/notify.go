@@ -59,6 +59,7 @@ void c_notify_set_urgency(void* n, int urgency) {
 }
 */
 import "C"
+
 import (
 	"log/slog"
 	"unsafe"

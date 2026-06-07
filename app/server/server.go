@@ -23,8 +23,10 @@ import (
 	"github.com/ollama/ollama/app/store"
 )
 
-const restartDelay = time.Second
-const maxConsecutiveFailures = 5
+const (
+	restartDelay           = time.Second
+	maxConsecutiveFailures = 5
+)
 
 // IsServerRunning checks if an ollama server is already reachable
 func IsServerRunning(ctx context.Context) bool {

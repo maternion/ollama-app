@@ -714,7 +714,8 @@ func (db *database) saveChat(chat Chat) error {
 		browserState = sql.NullString{String: string(chat.BrowserState), Valid: true}
 	}
 
-	_, err = tx.Exec(query,
+	_, err = tx.Exec(
+		query,
 		chat.ID,
 		chat.Title,
 		chat.CreatedAt,
@@ -813,7 +814,8 @@ func (db *database) updateLastMessage(chatID string, msg Message) error {
 		toolResultJSON = sql.NullString{String: string(resultBytes), Valid: true}
 	}
 
-	result, err := tx.Exec(query,
+	result, err := tx.Exec(
+		query,
 		msg.Content,
 		msg.Thinking,
 		modelName,
@@ -993,7 +995,8 @@ func (db *database) insertMessage(tx *sql.Tx, chatID string, msg Message) (int64
 		toolResultJSON = sql.NullString{String: string(resultBytes), Valid: true}
 	}
 
-	result, err := tx.Exec(query,
+	result, err := tx.Exec(
+		query,
 		chatID,
 		msg.Role,
 		msg.Content,
@@ -1138,7 +1141,8 @@ func (db *database) insertToolCall(tx *sql.Tx, messageID int64, tc ToolCall) err
 		functionResult = sql.NullString{String: string(resultJSON), Valid: true}
 	}
 
-	_, err := tx.Exec(query,
+	_, err := tx.Exec(
+		query,
 		messageID,
 		tc.Type,
 		tc.Function.Name,

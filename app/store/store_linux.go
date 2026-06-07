@@ -32,7 +32,8 @@ func ReadSystemdServiceEnv(key string) string {
 // ReadAllSystemdServiceEnv returns all environment variables from the ollama systemd service.
 func ReadAllSystemdServiceEnv() map[string]string {
 	env := make(map[string]string)
-	out, err := exec.Command("/usr/bin/systemctl",
+	out, err := exec.Command(
+		"/usr/bin/systemctl",
 		"show", "ollama.service",
 		"--property=Environment",
 		"--value",
@@ -63,7 +64,8 @@ func EnsureSystemdServiceRunning() bool {
 		return true
 	}
 	slog.Warn("ollama systemd service not active; attempting to start via pkexec")
-	cmd := exec.Command("/usr/bin/pkexec",
+	cmd := exec.Command(
+		"/usr/bin/pkexec",
 		"/usr/bin/sh", "-c",
 		"/usr/bin/systemctl kill --signal=SIGTERM ollama.service 2>/dev/null; "+
 			"/usr/bin/pkill -x ollama 2>/dev/null; "+
@@ -106,7 +108,8 @@ func WriteSystemdDropIn(env map[string]string) error {
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	cmd := exec.Command("/usr/bin/pkexec",
+	cmd := exec.Command(
+		"/usr/bin/pkexec",
 		"/usr/bin/sh", "-c",
 		fmt.Sprintf(
 			"mkdir -p %s && cp %s %s && /usr/bin/systemctl daemon-reload && /usr/bin/systemctl restart ollama",
@@ -124,7 +127,8 @@ func WriteSystemdDropIn(env map[string]string) error {
 
 // RestartSystemdService restarts the ollama systemd service via pkexec.
 func RestartSystemdService() error {
-	cmd := exec.Command("/usr/bin/pkexec",
+	cmd := exec.Command(
+		"/usr/bin/pkexec",
 		"/usr/bin/sh", "-c",
 		"/usr/bin/systemctl daemon-reload && /usr/bin/systemctl restart ollama",
 	)

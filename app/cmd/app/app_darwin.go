@@ -116,7 +116,7 @@ func maybeMoveAndRestart() appMove {
 	}
 
 	// Ask to move to applications directory
-	status := (appMove)(C.askToMoveToApplications())
+	status := appMove(C.askToMoveToApplications())
 	if status == MoveCompleted {
 		// Double check
 		if _, err := os.Stat(updater.SystemWidePath); err != nil {
