@@ -672,6 +672,9 @@ export const useSendMessage = (chatId: string) => {
               return newMap;
             });
 
+            // Flush batcher so pending content batch doesn't overwrite stats
+            batcher.flushBatch();
+
             // If server didn't compute stats, compute client-side and persist on message
             if (streamStartTime !== null && tokenCount > 0) {
               const elapsedMs = Date.now() - streamStartTime;
