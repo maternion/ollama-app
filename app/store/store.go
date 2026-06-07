@@ -412,15 +412,7 @@ func (s *Store) Settings() (Settings, error) {
 
 	// Set default models directory if not set
 	if settings.Models == "" {
-		dir := os.Getenv("OLLAMA_MODELS")
-		if dir != "" {
-			settings.Models = dir
-		} else {
-			home, err := os.UserHomeDir()
-			if err == nil {
-				settings.Models = filepath.Join(home, ".ollama", "models")
-			}
-		}
+		settings.Models = DefaultModelsDir()
 	}
 
 	if settings.LastHomeView == "" {

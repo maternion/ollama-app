@@ -6,6 +6,7 @@ package linuxtray
 #cgo LDFLAGS: -ldl
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <glib-object.h>
 
 static void* notify_handle = NULL;
 static void* notify_init_ptr = NULL;
@@ -57,44 +58,42 @@ void c_notify_set_timeout(void* n, int ms) {
 void c_notify_set_urgency(void* n, int urgency) {
 	((notify_set_urgency_fn)notify_set_urgency_ptr)(n, urgency);
 }
+
+static void object_unref(void *obj) {
+	g_object_unref(obj);
+}
 */
 import "C"
 
 import (
 	"log/slog"
+	"sync"
 	"unsafe"
 )
 
-var notifyLoaded bool
+var notifyOnce sync.Once
 
 // InitNotifications initializes libnotify. Safe to call multiple times.
 func InitNotifications() {
-	if notifyLoaded {
-		return
-	}
-	if C.init_notify() != 0 {
-		slog.Debug("libnotify not available, notifications disabled")
-		return
-	}
-	appName := C.CString("Ollama")
-	defer C.free(unsafe.Pointer(appName))
-	if C.c_notify_init(appName) == 0 {
-		slog.Warn("libnotify initialization failed")
-		return
-	}
-	notifyLoaded = true
-	slog.Debug("libnotify initialized")
+	notifyOnce.Do(func() {
+		if C.init_notify() != 0 {
+			slog.Debug("libnotify not available, notifications disabled")
+			return
+		}
+		appName := C.CString("Ollama")
+		defer C.free(unsafe.Pointer(appName))
+		if C.c_notify_init(appName) == 0 {
+			slog.Warn("libnotify initialization failed")
+			return
+		}
+		slog.Debug("libnotify initialized")
+	})
 }
 
 // ShowNotification displays a native desktop notification.
 // No-op if libnotify is not available at runtime.
 func ShowNotification(title, body string) {
-	if !notifyLoaded {
-		InitNotifications()
-		if !notifyLoaded {
-			return
-		}
-	}
+	InitNotifications()
 
 	cTitle := C.CString(title)
 	cBody := C.CString(body)
@@ -106,6 +105,7 @@ func ShowNotification(title, body string) {
 		slog.Warn("failed to create notification")
 		return
 	}
+	defer C.object_unref(n)
 
 	C.c_notify_set_timeout(n, -1) // NOTIFY_EXPIRES_DEFAULT
 	C.c_notify_set_urgency(n, 1)  // NOTIFY_URGENCY_NORMAL

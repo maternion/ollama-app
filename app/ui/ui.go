@@ -1554,7 +1554,7 @@ func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) error {
 
 	dest := filepath.Join(os.TempDir(), fmt.Sprintf("ollama-update-%s.AppImage", info.Version))
 	go func() {
-		err := s.Updater.DownloadRelease(r.Context(), info.DownloadURL, dest)
+		err := s.Updater.DownloadRelease(context.Background(), info.DownloadURL, dest)
 		s.updateInfoMu.Lock()
 		if err != nil {
 			s.log().Error("download failed", "error", err)

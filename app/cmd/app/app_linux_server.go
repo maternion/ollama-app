@@ -11,7 +11,10 @@ import (
 )
 
 func startManagedServer(ctx, octx context.Context, st *store.Store, devMode bool, done chan error) (*struct{}, bool) {
-	slog.Info("Linux app uses systemd service; no managed server")
+	slog.Info("Linux app uses systemd service; ensuring it's running")
+	if !store.EnsureSystemdServiceRunning() {
+		slog.Warn("failed to ensure systemd service is running")
+	}
 	done <- nil
 	return nil, false
 }
@@ -32,6 +35,10 @@ func makeRestartFunc(osrv *struct{}, serverFailed bool, octx context.Context, oc
 		}
 		if settings.ContextLength > 0 {
 			env["OLLAMA_CONTEXT_LENGTH"] = fmt.Sprintf("%d", settings.ContextLength)
+		}
+		cloudDisabled, _, err := st.CloudStatus()
+		if err == nil && cloudDisabled {
+			env["OLLAMA_NO_CLOUD"] = "1"
 		}
 		if err := store.WriteSystemdDropIn(env); err != nil {
 			slog.Error("failed to apply settings to systemd service", "error", err)

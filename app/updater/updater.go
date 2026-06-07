@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/version"
 	"github.com/ollama/ollama/auth"
@@ -218,22 +220,16 @@ func (u *Updater) DownloadNewRelease(ctx context.Context, updateResp UpdateRespo
 		}
 	}
 
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read body response: %w", err)
-	}
 	fp, err := os.OpenFile(stageFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
-		return fmt.Errorf("write payload %s: %w", stageFilename, err)
+		return err
 	}
-	if n, err := fp.Write(payload); err != nil || n != len(payload) {
-		_ = fp.Close()
-		return fmt.Errorf("write payload %s: %d vs %d -- %w", stageFilename, n, len(payload), err)
+	defer fp.Close()
+	written, err := io.Copy(fp, resp.Body)
+	if err != nil {
+		return err
 	}
-	if err := fp.Close(); err != nil {
-		return fmt.Errorf("close payload %s: %w", stageFilename, err)
-	}
-	slog.Info("new update downloaded " + stageFilename)
+	slog.Info("new update downloaded", "path", stageFilename, "bytes", written)
 
 	if err := VerifyDownload(); err != nil {
 		_ = os.Remove(stageFilename)
@@ -394,7 +390,7 @@ func (u *Updater) CheckForUpdatesSync(ctx context.Context) (*UpdateInfo, error) 
 	latest := strings.TrimPrefix(release.TagName, "v")
 	current := strings.TrimPrefix(version.Version, "v")
 
-	if latest == "" || latest == current {
+	if latest == "" || !semver.IsValid(release.TagName) || semver.Compare(release.TagName, "v"+current) <= 0 {
 		return nil, nil
 	}
 

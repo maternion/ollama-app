@@ -153,6 +153,7 @@ func (*appCallbacks) UIRunning() bool {
 }
 
 func (ac *appCallbacks) Quit() {
+	quit()
 	ac.shutdown()
 }
 

@@ -211,21 +211,29 @@ func (t *Tray) createMenu() {
 	t.menu = C.new_gtk_menu()
 	shell := C.to_menu_shell(t.menu)
 
-	C.add_menu_item(shell, C.CString("Open Ollama"),
+	cOpen := C.CString("Open Ollama")
+	C.add_menu_item(shell, cOpen,
 		C.int(registerCallback(func() { t.app.UIShow() })))
+	C.free(unsafe.Pointer(cOpen))
 
-	C.add_menu_item(shell, C.CString("Settings..."),
+	cSettings := C.CString("Settings...")
+	C.add_menu_item(shell, cSettings,
 		C.int(registerCallback(func() { t.app.UIRun("/settings") })))
+	C.free(unsafe.Pointer(cSettings))
 
 	C.add_menu_separator(shell)
 
-	C.add_menu_item(shell, C.CString("Check for Updates..."),
+	cCheck := C.CString("Check for Updates...")
+	C.add_menu_item(shell, cCheck,
 		C.int(registerCallback(func() { t.app.CheckForUpdates() })))
+	C.free(unsafe.Pointer(cCheck))
 
 	C.add_menu_separator(shell)
 
-	C.add_menu_item(shell, C.CString("Quit Ollama"),
+	cQuit := C.CString("Quit Ollama")
+	C.add_menu_item(shell, cQuit,
 		C.int(registerCallback(func() { t.app.Quit() })))
+	C.free(unsafe.Pointer(cQuit))
 
 	C.show_all_menu_ptr(t.menu)
 }

@@ -42,12 +42,59 @@ func ReadAllSystemdServiceEnv() map[string]string {
 		slog.Debug("failed to read systemd service env", "error", err)
 		return env
 	}
-	for _, pair := range strings.Fields(string(out)) {
-		if k, v, ok := strings.Cut(pair, "="); ok {
-			env[k] = v
+	// Parse line by line, respecting quoted values
+	s := string(out)
+	for len(s) > 0 {
+		s = strings.TrimLeft(s, " \t\n")
+		if s == "" {
+			break
+		}
+		eqPos := strings.IndexByte(s, '=')
+		if eqPos < 0 {
+			break
+		}
+		key := s[:eqPos]
+		s = s[eqPos+1:]
+		if s == "" {
+			env[key] = ""
+			continue
+		}
+		if s[0] == '"' {
+			// Quoted value: find closing quote
+			s = s[1:]
+			end := strings.IndexByte(s, '"')
+			if end < 0 {
+				env[key] = s
+				break
+			}
+			env[key] = unescapeSystemdValue(s[:end])
+			s = s[end+1:]
+		} else {
+			// Unquoted: consume until whitespace
+			end := strings.IndexAny(s, " \t\n")
+			if end < 0 {
+				env[key] = s
+				break
+			}
+			env[key] = s[:end]
+			s = s[end:]
 		}
 	}
 	return env
+}
+
+func escapeSystemdValue(v string) string {
+	v = strings.ReplaceAll(v, "\\", "\\\\")
+	v = strings.ReplaceAll(v, "\"", "\\\"")
+	v = strings.ReplaceAll(v, "$", "$$")
+	return "\"" + v + "\""
+}
+
+func unescapeSystemdValue(v string) string {
+	v = strings.ReplaceAll(v, "$$", "$")
+	v = strings.ReplaceAll(v, "\\\"", "\"")
+	v = strings.ReplaceAll(v, "\\\\", "\\")
+	return v
 }
 
 // IsSystemdServiceActive returns true if the ollama systemd service is active (running).
@@ -89,7 +136,7 @@ func WriteSystemdDropIn(env map[string]string) error {
 	buf.WriteString("[Service]\n")
 	for k, v := range env {
 		if v != "" {
-			buf.WriteString(fmt.Sprintf("Environment=%s=%s\n", k, v))
+			buf.WriteString(fmt.Sprintf("Environment=%s=%s\n", k, escapeSystemdValue(v)))
 		}
 	}
 	content := buf.String()
