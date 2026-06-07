@@ -689,12 +689,15 @@ export const useSendMessage = (chatId: string) => {
                   if (!old) return old;
                   const msgs = [...(old.chat.messages || [])];
                   for (let i = msgs.length - 1; i >= 0; i--) {
-                    const m = msgs[i] as any;
-                    if (m.role === "assistant") {
+                    if (msgs[i].role === "assistant") {
+                      const m = msgs[i] as any;
                       if (!hasServerStats || m.evalDuration == null) {
-                        m.tokensPerSecond = Math.round(tps * 10) / 10;
-                        m.evalDuration = durationStr;
-                        if (m.evalCount == null) m.evalCount = tokenCount;
+                        msgs[i] = {
+                          ...m,
+                          tokensPerSecond: Math.round(tps * 10) / 10,
+                          evalDuration: durationStr,
+                          evalCount: m.evalCount ?? tokenCount,
+                        } as any;
                       }
                       break;
                     }
@@ -712,11 +715,13 @@ export const useSendMessage = (chatId: string) => {
                 if (!old) return old;
                 const msgs = [...(old.chat.messages || [])];
                 for (let i = msgs.length - 1; i >= 0; i--) {
-                  const m = msgs[i] as any;
-                  if (m.role === "assistant") {
-                    m.evalCount = event.evalCount;
-                    m.tokensPerSecond = event.tokensPerSecond;
-                    m.evalDuration = event.evalDuration;
+                  if (msgs[i].role === "assistant") {
+                    msgs[i] = {
+                      ...(msgs[i] as any),
+                      evalCount: event.evalCount,
+                      tokensPerSecond: event.tokensPerSecond,
+                      evalDuration: event.evalDuration,
+                    } as any;
                     break;
                   }
                 }

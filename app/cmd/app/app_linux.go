@@ -435,6 +435,20 @@ func hideWindow(ptr unsafe.Pointer) {
 	C.hide_gtk_window_idle(ptr)
 }
 
+func showWindowSync(ptr unsafe.Pointer) {
+	if ptr == nil {
+		return
+	}
+	C.show_gtk_window(ptr)
+}
+
+func hideWindowSync(ptr unsafe.Pointer) {
+	if ptr == nil {
+		return
+	}
+	C.hide_gtk_window(ptr)
+}
+
 func runInBackground() {
 	exe, err := os.Executable()
 	if err != nil {

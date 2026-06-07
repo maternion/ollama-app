@@ -234,11 +234,11 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 		})
 
 		wv.Bind("ready", func() {
-			showWindow(wv.Window())
+			showWindowSync(wv.Window())
 		})
 
 		wv.Bind("close", func() {
-			hideWindow(wv.Window())
+			hideWindowSync(wv.Window())
 		})
 
 		// Webviews do not allow access to the file system by default, so we need to
