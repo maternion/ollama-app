@@ -4,94 +4,62 @@
   </a>
 </p>
 
-# Ollama
+# Ollama Linux Desktop App
 
-Start building with open models.
+A **Linux desktop app** for [Ollama](https://ollama.com) — native GTK3 system tray app with WebKit webview, systemd integration, and zero managed server overhead.
+
+This is a fork of [ollama/ollama](https://github.com/ollama/ollama) with Linux-specific enhancements. The upstream CLI and server are also included in the AppImage.
 
 ## Download
 
-### macOS
+### Linux (AppImage)
+
+Grab the latest from the [releases page](https://github.com/maternion/ollama-app/releases):
 
 ```shell
-curl -fsSL https://ollama.com/install.sh | sh
+curl -fsSL https://github.com/maternion/ollama-app/releases/latest/download/install.sh | sh
 ```
 
-or [download manually](https://ollama.com/download/Ollama.dmg)
+The install script handles GPU drivers and the `ollama` CLI from upstream, then installs the AppImage from our fork.
 
-### Windows
+Or download the AppImage directly from the [latest release](https://github.com/maternion/ollama-app/releases/latest), make it executable, and run.
 
-```shell
-irm https://ollama.com/install.ps1 | iex
-```
+## What makes this different
 
-or [download manually](https://ollama.com/download/OllamaSetup.exe)
+- **System tray app** — native Linux system tray via libayatana-appindicator, not a web app in a wrapper
+- **Systemd integration** — acts as a thin GUI frontend for `ollama.service`. Never starts a managed server on Linux. Settings (model directory, expose, context length) are written to a systemd drop-in via `pkexec`
+- **Native notifications** — desktop notifications via libnotify (loaded at runtime via dlopen, no build dependency)
+- **In-app updates** — checks GitHub releases, downloads and installs via the UI banner
+- **Audio file support** — file picker for audio-capable models, sent via the existing image pipeline
+- **Native dialogs** — file pickers, confirmation dialogs, directory selectors via GTK3
 
-### Linux
+### macOS and Windows
 
-```shell
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-[Manual install instructions](https://docs.ollama.com/linux#manual-install)
-
-### Docker
-
-The official [Ollama Docker image](https://hub.docker.com/r/ollama/ollama) `ollama/ollama` is available on Docker Hub.
-
-### Libraries
-
-- [ollama-python](https://github.com/ollama/ollama-python)
-- [ollama-js](https://github.com/ollama/ollama-js)
-
-### Community
-
-- [Discord](https://discord.gg/ollama)
-- [𝕏 (Twitter)](https://x.com/ollama)
-- [Reddit](https://reddit.com/r/ollama)
+This fork doesn't change macOS or Windows behavior — they keep the upstream managed server approach. For the upstream desktop apps, see [ollama.com/download](https://ollama.com/download).
 
 ## Get started
 
-```
-ollama
-```
+You'll need the `ollama` CLI and a running `ollama.service`. The AppImage includes the CLI, or install it separately:
 
-You'll be prompted to run a model or connect Ollama to your existing agents or applications such as `Claude Code`, `OpenClaw`, `OpenCode` , `Codex`, `Copilot`,  and more.
-
-### Coding
-
-To launch a specific integration:
-
-```
-ollama launch claude
+```shell
+curl -fsSL https://github.com/maternion/ollama-app/releases/latest/download/install.sh | sh
 ```
 
-Supported integrations include [Claude Code](https://docs.ollama.com/integrations/claude-code), [Codex](https://docs.ollama.com/integrations/codex), [Copilot CLI](https://docs.ollama.com/integrations/copilot-cli), [Droid](https://docs.ollama.com/integrations/droid), and [OpenCode](https://docs.ollama.com/integrations/opencode).
-
-### AI assistant
-
-Use [OpenClaw](https://docs.ollama.com/integrations/openclaw) to turn Ollama into a personal AI assistant across WhatsApp, Telegram, Slack, Discord, and more:
-
-```
-ollama launch openclaw
-```
+Then run the AppImage. If `ollama.service` isn't running, the app will start it for you.
 
 ### Chat with a model
 
-Run and chat with [Gemma 3](https://ollama.com/library/gemma3):
-
-```
+```shell
 ollama run gemma3
 ```
 
-See [ollama.com/library](https://ollama.com/library) for the full list.
-
-See the [quickstart guide](https://docs.ollama.com/quickstart) for more details.
+Then send messages from the app UI. See [ollama.com/library](https://ollama.com/library) for available models.
 
 ## REST API
 
-Ollama has a REST API for running and managing models.
+Ollama has a REST API for running and managing models. The API runs on `http://localhost:11434`.
 
-```
+```shell
 curl http://localhost:11434/api/chat -d '{
   "model": "gemma3",
   "messages": [{
@@ -106,7 +74,7 @@ See the [API documentation](https://docs.ollama.com/api) for all endpoints.
 
 ### Python
 
-```
+```shell
 pip install ollama
 ```
 
@@ -124,7 +92,7 @@ print(response.message.content)
 
 ### JavaScript
 
-```
+```shell
 npm i ollama
 ```
 
@@ -138,6 +106,38 @@ const response = await ollama.chat({
 console.log(response.message.content);
 ```
 
+## Architecture
+
+```
+app/cmd/app/        — Main entry point (Linux, macOS, Windows platform files)
+app/linuxtray/      — System tray (CGo + libayatana-appindicator3)
+app/webview/        — WebKitGTK webview (vendored webview.h)
+app/ui/             — Go HTTP server + embedded React SPA
+app/ui/app/         — React SPA (Vite + TanStack Router + React Query)
+app/store/          — Settings persistence (systemd drop-in on Linux)
+app/dialog/         — GTK3 native dialogs (CGo wrappers)
+app/updater/        — In-app update checker / downloader
+app/notify/         — Desktop notifications (libnotify via dlopen)
+```
+
+Key design decisions:
+- **Thin frontend**: App connects to systemd `ollama.service` — never starts its own server on Linux
+- **Thread-safe GTK**: All GTK calls from background goroutines use `g_idle_add`
+- **No auto-update**: No Sparkle on Linux — app queries GitHub API for new releases
+- **AppImage packaging**: Ships bundled GTK/WebKit shared libraries for broad distro compatibility
+
+## Building from source
+
+```shell
+# Quick binary (no AppImage)
+CGO_ENABLED=1 go build -o /tmp/ollama-app ./app/cmd/app
+
+# Full AppImage (requires GTK dev packages)
+./scripts/build_linux_app.sh
+```
+
+See `AGENTS.md` for full build and dev instructions.
+
 ## Supported backends
 
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) project founded by Georgi Gerganov.
@@ -146,8 +146,6 @@ console.log(response.message.content);
 
 - [CLI reference](https://docs.ollama.com/cli)
 - [REST API reference](https://docs.ollama.com/api)
-- [Importing models](https://docs.ollama.com/import)
-- [Modelfile reference](https://docs.ollama.com/modelfile)
 - [Building from source](https://github.com/ollama/ollama/blob/main/docs/development.md)
 
 ## Community Integrations
