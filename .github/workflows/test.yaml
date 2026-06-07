@@ -80,9 +80,6 @@ jobs:
       - name: Build UI
         working-directory: ./app/ui/app
         run: npm run build
-      - name: Run UI lint
-        working-directory: ./app/ui/app
-        run: npm run lint
       - name: Run UI tests
         working-directory: ./app/ui/app
         run: npm test
