@@ -278,6 +278,7 @@ func (db *database) migrate() error {
 			if err := db.migrateV16ToV17(); err != nil {
 				return fmt.Errorf("migrate v16 to v17: %w", err)
 			}
+			version = 17
 		default:
 			// If we have a version we don't recognize, just set it to current
 			// This might happen during development
