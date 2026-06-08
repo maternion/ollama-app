@@ -211,22 +211,6 @@ func (s *Server) Handler() http.Handler {
 				}
 			}
 
-			// Don't check for token in development mode
-			if !s.Dev {
-				cookie, err := r.Cookie("token")
-				if err != nil {
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Token is required"})
-					return
-				}
-
-				if cookie.Value != s.Token {
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Token is required"})
-					return
-				}
-			}
-
 			sw := &statusRecorder{ResponseWriter: w}
 
 			log := s.log()
