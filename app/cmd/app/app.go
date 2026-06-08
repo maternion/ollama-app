@@ -260,6 +260,11 @@ func main() {
 		UpdateAvailableFunc: func() {
 			UpdateAvailable("")
 		},
+		SetTrayStatusFunc: func(status string) {
+			if tray != nil {
+				tray.SetStatus(status)
+			}
+		},
 	}
 	uiServerRef = &uiServer
 

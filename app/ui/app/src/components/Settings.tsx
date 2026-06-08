@@ -210,7 +210,7 @@ export default function Settings() {
         Agent: false,
         Tools: false,
         ContextLength: 0,
-        AutoUpdateEnabled: true,
+        AutoUpdateEnabled: false,
       });
       updateSettingsMutation.mutate(defaultSettings);
     }

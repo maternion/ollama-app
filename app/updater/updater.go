@@ -465,7 +465,44 @@ func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(str
 				// Regular interval check
 			}
 
-			// Always check for updates
+			// Linux fork: use GitHub releases API (maternion/ollama-app) instead of
+			// ollama.com. The fork's version tags mirror upstream ollama versions,
+			// so a new release in the fork corresponds 1:1 to a new ollama release.
+			if runtime.GOOS == "linux" {
+				info, err := u.CheckForUpdatesSync(ctx)
+				if err != nil {
+					slog.Debug("background update check failed", "error", err)
+					continue
+				}
+				if info == nil {
+					continue
+				}
+
+				settings, err := u.Store.Settings()
+				if err != nil {
+					slog.Error("failed to load settings", "error", err)
+					continue
+				}
+
+				if settings.AutoUpdateEnabled {
+					slog.Debug("auto-downloading update", "version", info.Version)
+					resp := UpdateResponse{
+						UpdateURL:     info.DownloadURL,
+						UpdateVersion: info.Version,
+					}
+					if err := u.DownloadNewRelease(ctx, resp); err != nil {
+						slog.Error("failed to auto-download update", "error", err)
+					}
+				} else {
+					slog.Debug("update available", "version", info.Version)
+					if err := cb(info.Version); err != nil {
+						slog.Warn("failed to register update available with tray", "error", err)
+					}
+				}
+				continue
+			}
+
+			// macOS/Windows: use upstream ollama.com update endpoint
 			available, resp := u.checkForUpdate(ctx)
 			if !available {
 				continue
@@ -475,16 +512,6 @@ func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(str
 			settings, err := u.Store.Settings()
 			if err != nil {
 				slog.Error("failed to load settings", "error", err)
-				continue
-			}
-
-			// Linux: no auto-download, always notify tray via callback
-			if runtime.GOOS == "linux" {
-				slog.Debug("update available", "version", resp.UpdateVersion)
-				err = cb(resp.UpdateVersion)
-				if err != nil {
-					slog.Warn("failed to register update available with tray", "error", err)
-				}
 				continue
 			}
 

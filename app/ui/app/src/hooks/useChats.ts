@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "@tanstack/react-router";
 import { getChats, getChat, sendMessage, type ChatEventUnion } from "../api";
 import { Chat, ErrorEvent, Model } from "@/gotypes";
 import { Message } from "@/gotypes";
@@ -196,6 +197,7 @@ export const useIsWaitingForLoad = (chatId: string) => {
 
 export const useSendMessage = (chatId: string) => {
   let updatableChatId = chatId;
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { selectedModel } = useSelectedModel();
   const {
@@ -793,6 +795,14 @@ export const useSendMessage = (chatId: string) => {
       // Flush any remaining batched updates and cleanup
       batcher.flushBatch();
       batcher.cleanup();
+
+      // If we started with a "new" chat, navigate to the created chat
+      if (chatId === "new" && updatableChatId && updatableChatId !== "new") {
+        router.navigate({
+          to: "/c/$chatId",
+          params: { chatId: updatableChatId },
+        });
+      }
     },
   });
 };

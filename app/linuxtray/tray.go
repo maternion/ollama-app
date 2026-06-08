@@ -21,15 +21,6 @@ import (
 
 extern void goTrayCallback(int id);
 
-static gboolean _indicator_set_attention_idle(gpointer ind) {
-	app_indicator_set_status((AppIndicator*)ind, APP_INDICATOR_STATUS_ATTENTION);
-	return G_SOURCE_REMOVE;
-}
-
-static void indicator_set_attention_idle(void *ind) {
-	g_idle_add(_indicator_set_attention_idle, ind);
-}
-
 static gboolean _gtk_main_quit_idle(gpointer data) {
 	gtk_main_quit();
 	return G_SOURCE_REMOVE;
@@ -39,29 +30,12 @@ static void gtk_main_quit_idle(void) {
 	g_idle_add(_gtk_main_quit_idle, NULL);
 }
 
-static AppIndicator *new_indicator(const char *id, const char *icon_name, const char *icon_path) {
-	AppIndicator *ind = app_indicator_new(id, icon_name, APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
-	if (icon_path && icon_path[0] != '\0') {
-		app_indicator_set_icon_theme_path(ind, icon_path);
-	}
-	app_indicator_set_status(ind, APP_INDICATOR_STATUS_ACTIVE);
-	return ind;
+static AppIndicator *new_indicator(const char *id, AppIndicatorCategory category) {
+	return app_indicator_new(id, "", category);
 }
 
-static void indicator_set_icon(AppIndicator *ind, const char *icon_name) {
-	app_indicator_set_icon_full(ind, icon_name, icon_name);
-}
-
-static void indicator_set_attention_icon(AppIndicator *ind, const char *icon_name) {
-	app_indicator_set_attention_icon_full(ind, icon_name, icon_name);
-}
-
-static void indicator_set_status_attention(AppIndicator *ind) {
-	app_indicator_set_status(ind, APP_INDICATOR_STATUS_ATTENTION);
-}
-
-static void indicator_set_status_active(AppIndicator *ind) {
-	app_indicator_set_status(ind, APP_INDICATOR_STATUS_ACTIVE);
+static void indicator_set_icon_with_desc(AppIndicator *ind, const char *path, const char *desc) {
+	app_indicator_set_icon_full(ind, path, desc);
 }
 
 static void indicator_set_title(AppIndicator *ind, const char *title) {
@@ -86,8 +60,8 @@ static void add_menu_separator(GtkMenuShell *shell) {
 	gtk_menu_shell_append(shell, gtk_separator_menu_item_new());
 }
 
-static void show_all_menu(GtkWidget *menu) {
-	gtk_widget_show_all(menu);
+static void show_all_menu_ptr(GtkMenu *menu) {
+	gtk_widget_show_all(GTK_WIDGET(menu));
 }
 
 static GtkMenu *new_gtk_menu() {
@@ -97,10 +71,6 @@ static GtkMenu *new_gtk_menu() {
 static GtkMenuShell *to_menu_shell(GtkMenu *menu) {
 	return GTK_MENU_SHELL(menu);
 }
-
-static void show_all_menu_ptr(GtkMenu *menu) {
-	gtk_widget_show_all(GTK_WIDGET(menu));
-}
 */
 import "C"
 
@@ -108,6 +78,7 @@ type TrayCallbacks interface {
 	Quit()
 	TrayRun()
 	UpdateAvailable(ver string) error
+	SetStatus(status string)
 	GetIconHandle() int
 	GetIconDir() string
 }
@@ -152,12 +123,17 @@ type Tray struct {
 	app            AppCallbacks
 	iconDir        string
 	updateNotified bool
+	status         string
 	mu             sync.Mutex
 }
 
 const (
-	trayIconName   = "ollama-tray"
-	updateIconName = "ollama-update"
+	trayIconFilename   = "ollama-tray.png"
+	updateIconFilename = "ollama-update.png"
+
+	statusRunning         = "running"
+	statusUpdateAvailable = "update-available"
+	statusUpdating        = "updating"
 )
 
 func NewTray(app AppCallbacks) (TrayCallbacks, error) {
@@ -178,27 +154,21 @@ func NewTray(app AppCallbacks) (TrayCallbacks, error) {
 	t := &Tray{
 		app:     app,
 		iconDir: iconDir,
+		status:  statusRunning,
 	}
 
 	cid := C.CString("com.ollama.ollama-app")
-	cIconName := C.CString(trayIconName)
-	cIconPath := C.CString(iconDir)
-	t.indicator = C.new_indicator(cid, cIconName, cIconPath)
+	t.indicator = C.new_indicator(cid, C.APP_INDICATOR_CATEGORY_APPLICATION_STATUS)
 	C.free(unsafe.Pointer(cid))
-	C.free(unsafe.Pointer(cIconName))
-	C.free(unsafe.Pointer(cIconPath))
 
 	if t.indicator == nil {
 		return nil, fmt.Errorf("failed to create app indicator (no display server?)")
 	}
 
-	ctitle := C.CString("Ollama")
-	C.indicator_set_title(t.indicator, ctitle)
-	C.free(unsafe.Pointer(ctitle))
+	C.app_indicator_set_status(t.indicator, C.APP_INDICATOR_STATUS_ACTIVE)
 
-	cAttIcon := C.CString(updateIconName)
-	C.indicator_set_attention_icon(t.indicator, cAttIcon)
-	C.free(unsafe.Pointer(cAttIcon))
+	t.setTitle("Ollama")
+	t.setIconFromFile(trayIconFilename, "")
 
 	t.createMenu()
 
@@ -244,14 +214,55 @@ func (t *Tray) Quit() {
 	C.gtk_main_quit_idle()
 }
 
-func (t *Tray) UpdateAvailable(ver string) error {
+func (t *Tray) setTitle(title string) {
+	ctitle := C.CString(title)
+	C.indicator_set_title(t.indicator, ctitle)
+	C.free(unsafe.Pointer(ctitle))
+}
+
+func (t *Tray) setIconFromFile(filename string, desc string) {
+	path := filepath.Join(t.iconDir, filename)
+	cpath := C.CString(path)
+	var cdesc *C.char
+	if desc != "" {
+		cdesc = C.CString(desc)
+	}
+	C.indicator_set_icon_with_desc(t.indicator, cpath, cdesc)
+	C.free(unsafe.Pointer(cpath))
+	if cdesc != nil {
+		C.free(unsafe.Pointer(cdesc))
+	}
+}
+
+func (t *Tray) SetStatus(status string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.status == status {
+		return
+	}
+	t.status = status
+	switch status {
+	case statusRunning:
+		t.setTitle("Ollama")
+		t.setIconFromFile(trayIconFilename, "")
+	case statusUpdateAvailable:
+		t.setTitle("Ollama")
+		t.setIconFromFile(updateIconFilename, "Update Available")
+	case statusUpdating:
+		t.setTitle("Ollama")
+		t.setIconFromFile(updateIconFilename, "Updating...")
+	}
+}
+
+func (t *Tray) UpdateAvailable(ver string) error {
+	t.mu.Lock()
 	if t.updateNotified {
+		t.mu.Unlock()
 		return nil
 	}
 	t.updateNotified = true
-	C.indicator_set_attention_idle(unsafe.Pointer(t.indicator))
+	t.mu.Unlock()
+	t.SetStatus(statusUpdateAvailable)
 	slog.Info("update available notification shown via tray", "version", ver)
 	return nil
 }
@@ -269,10 +280,10 @@ func writeIconsToTempDir(trayIcon, updateIcon []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, trayIconName+".png"), trayIcon, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, trayIconFilename), trayIcon, 0o644); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, updateIconName+".png"), updateIcon, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, updateIconFilename), updateIcon, 0o644); err != nil {
 		return "", err
 	}
 	return dir, nil

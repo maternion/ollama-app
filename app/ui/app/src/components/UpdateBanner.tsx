@@ -1,11 +1,11 @@
 import { Display } from "./ui/display";
-import { useUpdateInfo, useCheckForUpdate, useDownloadUpdate, useInstallUpdate } from "../hooks/useUpdate";
+import { useUpdateInfo, useDownloadUpdate, useInstallUpdate, useDismissUpdate } from "../hooks/useUpdate";
 
 export function UpdateBanner() {
   const { data: info, isLoading } = useUpdateInfo();
-  const check = useCheckForUpdate();
   const download = useDownloadUpdate();
   const install = useInstallUpdate();
+  const dismiss = useDismissUpdate();
 
   if (isLoading || !info) return null;
 
@@ -44,7 +44,7 @@ export function UpdateBanner() {
           disabled: download.isPending,
           onClick: () => download.mutate(),
         }}
-        onDismiss={() => check.mutate()}
+        onDismiss={() => dismiss.mutate()}
       />
     );
   }

@@ -4,6 +4,7 @@ import { WebSearchButton } from "@/components/WebSearchButton";
 import { ImageThumbnail } from "@/components/ImageThumbnail";
 import { AudioThumbnail } from "@/components/AudioThumbnail";
 import { FileAttachmentMenu } from "@/components/FileAttachmentMenu";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { isImageFile, isAudioFile } from "@/utils/imageUtils";
 import {
   useHasVisionCapability,
@@ -640,6 +641,11 @@ function ChatForm({
   return (
     <div className={`pb-3 px-3 ${hasMessages ? "mt-auto" : "my-auto"}`}>
       {chatId === "new" && <Logo />}
+      {chatId === "new" && (
+        <div className="mb-4">
+          <UpdateBanner />
+        </div>
+      )}
 
       {shouldShowLoginBanner && (
         <DisplayLogin

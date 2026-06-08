@@ -42,6 +42,7 @@ export default function Chat({ chatId }: { chatId: string }) {
   const shouldShowStaleDisplay = useShouldShowStaleDisplay(selectedModel);
   const dismissStaleModel = useDismissStaleModel();
   const { isHealthy } = useHealth();
+  const sendMessageMutation = useSendMessage(chatId);
 
   const [editingMessage, setEditingMessage] = useState<{
     content: string;
@@ -100,8 +101,6 @@ export default function Chat({ chatId }: { chatId: string }) {
   useEffect(() => {
     setEditingMessage(null);
   }, [chatId]);
-
-  const sendMessageMutation = useSendMessage(chatId);
 
   const { containerRef, handleNewUserMessage, spacerHeight } =
     useMessageAutoscroll({

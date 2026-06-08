@@ -112,6 +112,7 @@ type Server struct {
 
 	Updater             *updater.Updater
 	UpdateAvailableFunc func()
+	SetTrayStatusFunc   func(status string)
 
 	updateInfo   responses.UpdateInfo
 	updateInfoMu sync.RWMutex
@@ -230,6 +231,11 @@ func (s *Server) Handler() http.Handler {
 					}
 				}
 
+				// Quiet periodic polling endpoints
+				if r.URL.Path == "/api/v1/update" || r.URL.Path == "/api/v1/settings" {
+					level = slog.LevelDebug
+				}
+
 				log.Log(
 					r.Context(), level, "site.serveHTTP",
 					"http.method", r.Method,
@@ -289,6 +295,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/update/check", handle(s.checkUpdate))
 	mux.Handle("POST /api/v1/update/download", handle(s.downloadUpdate))
 	mux.Handle("POST /api/v1/update/install", handle(s.installUpdate))
+	mux.Handle("POST /api/v1/update/dismiss", handle(s.dismissUpdate))
 
 	// Ollama proxy endpoints
 	ollamaProxy := s.ollamaProxy()
@@ -1536,6 +1543,10 @@ func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) error {
 	s.updateInfo.Downloading = true
 	s.updateInfoMu.Unlock()
 
+	if s.SetTrayStatusFunc != nil {
+		s.SetTrayStatusFunc("updating")
+	}
+
 	dest := filepath.Join(os.TempDir(), fmt.Sprintf("ollama-update-%s.AppImage", info.Version))
 	go func() {
 		err := s.Updater.DownloadRelease(context.Background(), info.DownloadURL, dest)
@@ -1544,11 +1555,17 @@ func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) error {
 			s.log().Error("download failed", "error", err)
 			s.updateInfo.Downloading = false
 			s.updateInfo = responses.UpdateInfo{}
+			if s.SetTrayStatusFunc != nil {
+				s.SetTrayStatusFunc("update-available")
+			}
 		} else {
 			s.log().Info("update downloaded", "path", dest)
 			s.updateInfo.Downloading = false
 			s.updateInfo.Downloaded = true
 			s.updateInfo.DownloadBytes = 0
+			if s.SetTrayStatusFunc != nil {
+				s.SetTrayStatusFunc("update-available")
+			}
 		}
 		s.updateInfoMu.Unlock()
 	}()
@@ -1598,8 +1615,21 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
 		}
 	}()
 
+	if s.SetTrayStatusFunc != nil {
+		s.SetTrayStatusFunc("updating")
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(map[string]bool{"installing": true})
+}
+
+func (s *Server) dismissUpdate(w http.ResponseWriter, r *http.Request) error {
+	s.SetUpdateInfo(responses.UpdateInfo{})
+	if s.SetTrayStatusFunc != nil {
+		s.SetTrayStatusFunc("running")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(map[string]bool{"dismissed": true})
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
