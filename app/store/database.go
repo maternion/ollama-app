@@ -14,7 +14,7 @@ import (
 
 // currentSchemaVersion defines the current database schema version.
 // Increment this when making schema changes that require migrations.
-const currentSchemaVersion = 16
+const currentSchemaVersion = 17
 
 // database wraps the SQLite connection.
 // SQLite handles its own locking for concurrent access:
@@ -116,6 +116,9 @@ func (db *database) init() error {
 		thinking_time_start TIMESTAMP,
 		thinking_time_end TIMESTAMP,
 		tool_result TEXT,
+		eval_count INTEGER,
+		tokens_per_second REAL,
+		eval_duration TEXT,
 		FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
 	);
 
@@ -271,6 +274,10 @@ func (db *database) migrate() error {
 				return fmt.Errorf("migrate v15 to v16: %w", err)
 			}
 			version = 16
+		case 16:
+			if err := db.migrateV16ToV17(); err != nil {
+				return fmt.Errorf("migrate v16 to v17: %w", err)
+			}
 		default:
 			// If we have a version we don't recognize, just set it to current
 			// This might happen during development
@@ -540,6 +547,31 @@ func (db *database) migrateV15ToV16() error {
 	return nil
 }
 
+// migrateV16ToV17 adds eval_count, tokens_per_second, and eval_duration columns to the messages table
+func (db *database) migrateV16ToV17() error {
+	_, err := db.conn.Exec(`ALTER TABLE messages ADD COLUMN eval_count INTEGER`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add eval_count column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE messages ADD COLUMN tokens_per_second REAL`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add tokens_per_second column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE messages ADD COLUMN eval_duration TEXT`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add eval_duration column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 17`)
+	if err != nil {
+		return fmt.Errorf("update schema version: %w", err)
+	}
+
+	return nil
+}
+
 // cleanupOrphanedData removes orphaned records that may exist due to the foreign key bug
 func (db *database) cleanupOrphanedData() error {
 	_, err := db.conn.Exec(`
@@ -788,7 +820,7 @@ func (db *database) updateLastMessage(chatID string, msg Message) error {
 
 	query := `
 		UPDATE messages 
-		SET content = ?, thinking = ?, model_name = ?, updated_at = ?, thinking_time_start = ?, thinking_time_end = ?, tool_result = ?
+		SET content = ?, thinking = ?, model_name = ?, updated_at = ?, thinking_time_start = ?, thinking_time_end = ?, tool_result = ?, eval_count = ?, tokens_per_second = ?, eval_duration = ?
 		WHERE id = ?
 	`
 
@@ -823,6 +855,9 @@ func (db *database) updateLastMessage(chatID string, msg Message) error {
 		thinkingTimeStart,
 		thinkingTimeEnd,
 		toolResultJSON,
+		msg.EvalCount,
+		msg.TokensPerSecond,
+		msg.EvalDuration,
 		messageID,
 	)
 	if err != nil {
@@ -887,7 +922,7 @@ func (db *database) appendMessage(chatID string, msg Message) error {
 
 func (db *database) getMessages(chatID string, loadAttachmentData bool) ([]Message, error) {
 	query := `
-		SELECT id, role, content, thinking, stream, model_name, created_at, updated_at, thinking_time_start, thinking_time_end, tool_result
+		SELECT id, role, content, thinking, stream, model_name, created_at, updated_at, thinking_time_start, thinking_time_end, tool_result, eval_count, tokens_per_second, eval_duration
 		FROM messages
 		WHERE chat_id = ?
 		ORDER BY id ASC
@@ -906,6 +941,9 @@ func (db *database) getMessages(chatID string, loadAttachmentData bool) ([]Messa
 		var thinkingTimeStart, thinkingTimeEnd sql.NullTime
 		var modelName sql.NullString
 		var toolResult sql.NullString
+		var evalCount sql.NullInt64
+		var tokensPerSecond sql.NullFloat64
+		var evalDuration sql.NullString
 
 		err := rows.Scan(
 			&messageID,
@@ -919,6 +957,9 @@ func (db *database) getMessages(chatID string, loadAttachmentData bool) ([]Messa
 			&thinkingTimeStart,
 			&thinkingTimeEnd,
 			&toolResult,
+			&evalCount,
+			&tokensPerSecond,
+			&evalDuration,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
@@ -935,6 +976,18 @@ func (db *database) getMessages(chatID string, loadAttachmentData bool) ([]Messa
 		}
 		if thinkingTimeEnd.Valid {
 			msg.ThinkingTimeEnd = &thinkingTimeEnd.Time
+		}
+
+		if evalCount.Valid {
+			v := int(evalCount.Int64)
+			msg.EvalCount = &v
+		}
+		if tokensPerSecond.Valid {
+			v := tokensPerSecond.Float64
+			msg.TokensPerSecond = &v
+		}
+		if evalDuration.Valid {
+			msg.EvalDuration = &evalDuration.String
 		}
 
 		// Parse tool result from JSON if present
@@ -969,8 +1022,8 @@ func (db *database) getMessages(chatID string, loadAttachmentData bool) ([]Messa
 
 func (db *database) insertMessage(tx *sql.Tx, chatID string, msg Message) (int64, error) {
 	query := `
-		INSERT INTO messages (chat_id, role, content, thinking, stream, model_name, created_at, updated_at, thinking_time_start, thinking_time_end, tool_result)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO messages (chat_id, role, content, thinking, stream, model_name, created_at, updated_at, thinking_time_start, thinking_time_end, tool_result, eval_count, tokens_per_second, eval_duration)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var thinkingTimeStart, thinkingTimeEnd sql.NullTime
@@ -1008,6 +1061,9 @@ func (db *database) insertMessage(tx *sql.Tx, chatID string, msg Message) (int64
 		thinkingTimeStart,
 		thinkingTimeEnd,
 		toolResultJSON,
+		msg.EvalCount,
+		msg.TokensPerSecond,
+		msg.EvalDuration,
 	)
 	if err != nil {
 		return 0, err
