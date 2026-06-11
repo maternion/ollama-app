@@ -431,6 +431,48 @@ export default function Settings() {
                 </div>
               </Field>
 
+              {/* Chat Import / Export */}
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <ArrowDownTrayIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                    <div>
+                      <Label>Chat backup</Label>
+                      <Description>
+                        Export all chats as a JSON file or import from a previous backup.
+                      </Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex gap-2">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await window.exportAllChats();
+                        } catch (e) {
+                          console.error("Export failed:", e);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
+                    >
+                      Export
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await window.importChats();
+                          queryClient.invalidateQueries({ queryKey: ["chats"] });
+                        } catch (e) {
+                          console.error("Import failed:", e);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
+                    >
+                      Import
+                    </button>
+                  </div>
+                </div>
+              </Field>
+
               {/* Expose Ollama */}
               <Field>
                 <div className="flex items-start justify-between gap-4">

@@ -21,6 +21,13 @@ interface WebviewAPI {
   selectWorkingDirectory: () => Promise<string | null>;
 }
 
+interface ExportResult {
+  success?: true;
+  path?: string;
+  count?: number;
+  error?: string;
+}
+
 declare global {
   interface Window {
     webview?: WebviewAPI;
@@ -29,6 +36,10 @@ declare global {
     menu: (items: MenuItem[]) => Promise<string | null>;
     OLLAMA_TOOLS?: boolean;
     OLLAMA_WEBSEARCH?: boolean;
+
+    exportChat(chatId: string): Promise<ExportResult>;
+    exportAllChats(): Promise<ExportResult>;
+    importChats(): Promise<ExportResult>;
   }
 
   namespace JSX {

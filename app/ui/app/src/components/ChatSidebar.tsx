@@ -7,7 +7,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { getChat } from "@/api";
 import { Link } from "@/components/ui/link";
 import { ChatsResponse } from "@/gotypes";
-import { CogIcon, RocketLaunchIcon } from "@heroicons/react/24/outline";
+import { CogIcon, RocketLaunchIcon, EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
 import { useMatchRoute } from "@tanstack/react-router";
 
 // there's a hidden debug feature to copy a chat's data to the clipboard by
@@ -30,9 +30,12 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingDeleteTitle, setPendingDeleteTitle] = useState<string>("");
+  const pendingDeleteIdRef = useRef<string | null>(null);
   const [shiftClicks, setShiftClicks] = useState<Record<string, number[]>>({});
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
+  const [menuOpenChatId, setMenuOpenChatId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = useCallback(
     (chatId: string) => {
@@ -169,9 +172,10 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
     ].filter((group) => group.chats.length > 0);
   }, [groupedChats]);
 
-  const confirmDeleteChat = useCallback(async () => {
-    if (!pendingDeleteId) return;
-    const chatId = pendingDeleteId;
+  const confirmDeleteChat = async () => {
+    const chatId = pendingDeleteIdRef.current;
+    if (!chatId) return;
+    pendingDeleteIdRef.current = null;
     setPendingDeleteId(null);
     setPendingDeleteTitle("");
     try {
@@ -179,7 +183,35 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
     } catch (error) {
       console.error("Failed to delete chat:", error);
     }
-  }, [pendingDeleteId, deleteMutation]);
+  };
+
+  // Keep ref in sync for the confirm callback
+  useEffect(() => {
+    pendingDeleteIdRef.current = pendingDeleteId;
+  }, [pendingDeleteId]);
+
+  const handleExportChat = useCallback(async (chatId: string) => {
+    try {
+      await window.exportChat(chatId);
+    } catch (error) {
+      console.error("Failed to export chat:", error);
+    }
+    setMenuOpenChatId(null);
+  }, []);
+
+  // Close 3-dot menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      // If clicking inside the currently-open menu wrapper, do nothing
+      if (target?.closest('[data-menu-open="true"]')) {
+        return;
+      }
+      setMenuOpenChatId(null);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // implementation of the hidden debug feature to copy a chat's data to the clipboard
   const handleShiftClick = useCallback(
@@ -228,17 +260,20 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
     async (_: React.MouseEvent, chatId: string, chatTitle: string) => {
       const selectedAction = await window.menu([
         { label: "Rename", enabled: true },
+        { label: "Export", enabled: true },
         { label: "Delete", enabled: true },
       ]);
 
       if (selectedAction === "Rename") {
         startEditing(chatId, chatTitle);
+      } else if (selectedAction === "Export") {
+        handleExportChat(chatId);
       } else if (selectedAction === "Delete") {
         setPendingDeleteId(chatId);
         setPendingDeleteTitle(chatTitle);
       }
     },
-    [startEditing],
+    [startEditing, handleExportChat],
   );
 
   if (isLoading) {
@@ -368,6 +403,7 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
                         className="flex-1 flex items-center min-w-0 px-2 py-2 select-none"
                         onClick={(e) => {
                           handleShiftClick(e, chat.id);
+                          setMenuOpenChatId(null);
                         }}
                         draggable={false}
                       >
@@ -382,60 +418,64 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
                           </span>
                         )}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          startEditing(chat.id, chat.title || "");
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 cursor-pointer flex-shrink-0"
-                        title="Rename chat"
-                        aria-label={`Rename ${chat.title || "chat"}`}
+                      <div
+                        ref={menuOpenChatId === chat.id ? menuRef : undefined}
+                        data-menu-open={menuOpenChatId === chat.id ? "true" : undefined}
+                        className={`relative flex-shrink-0 ${menuOpenChatId === chat.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 transition-opacity"}`}
                       >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="w-4 h-4"
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setMenuOpenChatId(menuOpenChatId === chat.id ? null : chat.id);
+                          }}
+                          className="p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 cursor-pointer"
+                          title="More actions"
+                          aria-label={`Actions for ${chat.title || "chat"}`}
                         >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setPendingDeleteId(chat.id);
-                          setPendingDeleteTitle(chat.title || "");
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-neutral-500 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400 cursor-pointer flex-shrink-0"
-                        title="Delete chat"
-                        aria-label={`Delete ${chat.title || "chat"}`}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="w-4 h-4"
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
-                          <path d="M10 11v6" />
-                          <path d="M14 11v6" />
-                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                        </svg>
-                      </button>
+                          <EllipsisHorizontalIcon className="w-5 h-5" />
+                        </button>
+                        {menuOpenChatId === chat.id && (
+                          <div
+                            className="absolute right-0 top-full mt-1 z-50 min-w-[140px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl py-1 origin-top-right"
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                startEditing(chat.id, chat.title || "");
+                                setMenuOpenChatId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
+                            >
+                              Rename
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleExportChat(chat.id);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
+                            >
+                              Export
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPendingDeleteId(chat.id);
+                                setPendingDeleteTitle(chat.title || "");
+                                setMenuOpenChatId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer border-t border-neutral-200 dark:border-neutral-700"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
