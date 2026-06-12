@@ -89,5 +89,3 @@ jobs:
         if: always()
         run: go test -count=1 -benchtime=1x ./app/...
       - uses: golangci/golangci-lint-action@v9
-        with:
-          only-new-issues: true

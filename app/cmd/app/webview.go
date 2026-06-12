@@ -550,7 +550,7 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 					return
 				}
 
-				if err := os.WriteFile(path, data, 0644); err != nil {
+				if err := os.WriteFile(path, data, 0o644); err != nil {
 					slog.Error("failed to write chat export", "error", err)
 					callCallback(map[string]interface{}{"error": err.Error()})
 					return
@@ -616,7 +616,7 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 					return
 				}
 
-				if err := os.WriteFile(path, data, 0644); err != nil {
+				if err := os.WriteFile(path, data, 0o644); err != nil {
 					slog.Error("failed to write chats export", "error", err)
 					callCallback(map[string]interface{}{"error": err.Error()})
 					return
