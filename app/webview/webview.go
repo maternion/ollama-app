@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 /*
  * MIT License
@@ -29,6 +29,10 @@ package webview
 /*
 #cgo CFLAGS: -I${SRCDIR}/libs/webview/include
 #cgo CXXFLAGS: -I${SRCDIR}/libs/webview/include -DWEBVIEW_STATIC
+
+#cgo linux CXXFLAGS: -DWEBVIEW_GTK -DUSE_JSC_H -std=c++11
+#cgo linux pkg-config: gtk+-3.0 webkit2gtk-4.1
+#cgo linux LDFLAGS: -lgtk-3 -lwebkit2gtk-4.1
 
 #cgo darwin CXXFLAGS: -DWEBVIEW_COCOA -std=c++11
 #cgo darwin LDFLAGS: -framework WebKit -ldl

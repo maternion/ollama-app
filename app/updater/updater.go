@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package updater
 
@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/version"
@@ -218,22 +220,16 @@ func (u *Updater) DownloadNewRelease(ctx context.Context, updateResp UpdateRespo
 		}
 	}
 
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read body response: %w", err)
-	}
 	fp, err := os.OpenFile(stageFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
-		return fmt.Errorf("write payload %s: %w", stageFilename, err)
+		return err
 	}
-	if n, err := fp.Write(payload); err != nil || n != len(payload) {
-		_ = fp.Close()
-		return fmt.Errorf("write payload %s: %d vs %d -- %w", stageFilename, n, len(payload), err)
+	defer fp.Close()
+	written, err := io.Copy(fp, resp.Body)
+	if err != nil {
+		return err
 	}
-	if err := fp.Close(); err != nil {
-		return fmt.Errorf("close payload %s: %w", stageFilename, err)
-	}
-	slog.Info("new update downloaded " + stageFilename)
+	slog.Info("new update downloaded", "path", stageFilename, "bytes", written)
 
 	if err := VerifyDownload(); err != nil {
 		_ = os.Remove(stageFilename)
@@ -346,6 +342,108 @@ func (u *Updater) TriggerImmediateCheck() {
 	}
 }
 
+// GitHubReleaseURL is the API endpoint for checking the latest release version.
+// Override this to point to a fork's releases (e.g. maternion/ollama-app).
+var GitHubReleaseURL = "https://api.github.com/repos/maternion/ollama-app/releases/latest"
+
+// GitHubReleaseAssetPattern is the filename pattern for the Linux AppImage asset.
+// Override this when switching to a fork that names assets differently.
+var GitHubReleaseAssetPattern = "ollama-linux-amd64.AppImage"
+
+// UpdateInfo contains the result of an update check.
+type UpdateInfo struct {
+	Version     string
+	DownloadURL string
+}
+
+// CheckForUpdatesSync performs a synchronous update check via the GitHub releases API
+// and returns update info including a download URL, or nil if already up-to-date.
+func (u *Updater) CheckForUpdatesSync(ctx context.Context) (*UpdateInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, GitHubReleaseURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", fmt.Sprintf("ollama/%s", version.Version))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, err
+	}
+
+	latest := strings.TrimPrefix(release.TagName, "v")
+	current := strings.TrimPrefix(version.Version, "v")
+
+	if latest == "" || !semver.IsValid(release.TagName) || semver.Compare(release.TagName, "v"+current) <= 0 {
+		return nil, nil
+	}
+
+	// Find the AppImage asset
+	for _, asset := range release.Assets {
+		if asset.Name == GitHubReleaseAssetPattern {
+			return &UpdateInfo{
+				Version:     release.TagName,
+				DownloadURL: asset.BrowserDownloadURL,
+			}, nil
+		}
+	}
+
+	// If no matching asset found, still return the version info
+	return &UpdateInfo{
+		Version: release.TagName,
+	}, nil
+}
+
+// DownloadRelease downloads an AppImage from the given URL to the specified path.
+// Returns the path to the downloaded file.
+func (u *Updater) DownloadRelease(ctx context.Context, url, destPath string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", fmt.Sprintf("ollama/%s", version.Version))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download returned %d", resp.StatusCode)
+	}
+
+	f, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	written, err := io.Copy(f, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("release downloaded", "path", destPath, "bytes", written)
+	return nil
+}
+
 func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(string) error) {
 	u.checkNow = make(chan struct{}, 1)
 	u.checkNow <- struct{}{} // Trigger first check after initial delay
@@ -367,7 +465,44 @@ func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(str
 				// Regular interval check
 			}
 
-			// Always check for updates
+			// Linux fork: use GitHub releases API (maternion/ollama-app) instead of
+			// ollama.com. The fork's version tags mirror upstream ollama versions,
+			// so a new release in the fork corresponds 1:1 to a new ollama release.
+			if runtime.GOOS == "linux" {
+				info, err := u.CheckForUpdatesSync(ctx)
+				if err != nil {
+					slog.Debug("background update check failed", "error", err)
+					continue
+				}
+				if info == nil {
+					continue
+				}
+
+				settings, err := u.Store.Settings()
+				if err != nil {
+					slog.Error("failed to load settings", "error", err)
+					continue
+				}
+
+				if settings.AutoUpdateEnabled {
+					slog.Debug("auto-downloading update", "version", info.Version)
+					resp := UpdateResponse{
+						UpdateURL:     info.DownloadURL,
+						UpdateVersion: info.Version,
+					}
+					if err := u.DownloadNewRelease(ctx, resp); err != nil {
+						slog.Error("failed to auto-download update", "error", err)
+					}
+				} else {
+					slog.Debug("update available", "version", info.Version)
+					if err := cb(info.Version); err != nil {
+						slog.Warn("failed to register update available with tray", "error", err)
+					}
+				}
+				continue
+			}
+
+			// macOS/Windows: use upstream ollama.com update endpoint
 			available, resp := u.checkForUpdate(ctx)
 			if !available {
 				continue
@@ -380,8 +515,8 @@ func (u *Updater) StartBackgroundUpdaterChecker(ctx context.Context, cb func(str
 				continue
 			}
 
+			// Non-Linux: respect auto-update setting — silently skip if disabled
 			if !settings.AutoUpdateEnabled {
-				// Auto-update disabled - don't download, just log
 				slog.Debug("update available but auto-update disabled", "version", resp.UpdateVersion)
 				continue
 			}

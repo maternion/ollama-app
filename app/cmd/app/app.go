@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package main
 
@@ -24,7 +24,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/ollama/ollama/app/auth"
 	"github.com/ollama/ollama/app/logrotate"
-	"github.com/ollama/ollama/app/server"
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/tools"
 	"github.com/ollama/ollama/app/ui"
@@ -36,6 +35,8 @@ var (
 	wv           = &Webview{}
 	uiServerPort int
 	appStore     *store.Store
+	appUpdater   *updater.Updater
+	uiServerRef  *ui.Server
 )
 
 var debug = strings.EqualFold(os.Getenv("OLLAMA_DEBUG"), "true") || os.Getenv("OLLAMA_DEBUG") == "1"
@@ -142,15 +143,12 @@ func main() {
 	slog.SetDefault(slog.New(handler))
 	logStartup()
 
-	// On Windows, check if another instance is running and send URL to it
+	// On Windows/Linux, check if another instance is running and send URL to it
 	// Do this after logging is set up so we can debug issues
-	if runtime.GOOS == "windows" && urlSchemeRequest != "" {
+	if urlSchemeRequest != "" {
 		slog.Debug("checking for existing instance", "url", urlSchemeRequest)
 		if checkAndHandleExistingInstance(urlSchemeRequest) {
-			// The function will exit if it successfully sends to another instance
-			// If we reach here, we're the first/only instance
 		} else {
-			// No existing instance found, handle the URL scheme in this instance
 			go func() {
 				handleURLSchemeInCurrentInstance(urlSchemeRequest)
 			}()
@@ -245,24 +243,15 @@ func main() {
 	// making the webview a global variable is easier for now
 	wv.Store = st
 	done := make(chan error, 1)
-	osrv := server.New(st, devMode)
-	go func() {
-		slog.Info("starting ollama server")
-		done <- osrv.Run(octx)
-	}()
+
+	osrv, serverFailed := startManagedServer(ctx, octx, st, devMode, done)
 
 	upd := &updater.Updater{Store: st}
+	appUpdater = upd
 
 	uiServer := ui.Server{
-		Token: token,
-		Restart: func() {
-			ocancel()
-			<-done
-			octx, ocancel = context.WithCancel(ctx)
-			go func() {
-				done <- osrv.Run(octx)
-			}()
-		},
+		Token:        token,
+		Restart:      makeRestartFunc(osrv, serverFailed, octx, ocancel, done, ctx, st),
 		Store:        st,
 		ToolRegistry: toolRegistry,
 		Dev:          devMode,
@@ -271,7 +260,13 @@ func main() {
 		UpdateAvailableFunc: func() {
 			UpdateAvailable("")
 		},
+		SetTrayStatusFunc: func(status string) {
+			if tray != nil {
+				tray.SetStatus(status)
+			}
+		},
 	}
+	uiServerRef = &uiServer
 
 	srv := &http.Server{
 		Handler: uiServer.Handler(),
@@ -458,8 +453,9 @@ func openInBrowser(url string) {
 	case "darwin":
 		cmd = "open"
 		args = []string{url}
-	default: // "linux", "freebsd", "openbsd", "netbsd"... should not reach here
-		slog.Warn("unsupported OS for openInBrowser", "os", runtime.GOOS)
+	default:
+		cmd = "xdg-open"
+		args = []string{url}
 	}
 
 	slog.Info("executing browser command", "cmd", cmd, "args", args)

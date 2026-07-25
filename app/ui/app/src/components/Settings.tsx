@@ -12,13 +12,10 @@ import {
   BoltIcon,
   WrenchIcon,
   CloudIcon,
-  XMarkIcon,
-  CogIcon,
-  ArrowLeftIcon,
   ArrowDownTrayIcon,
 } from "@heroicons/react/20/solid";
+import { CogIcon } from "@heroicons/react/24/outline";
 import { Settings as SettingsType } from "@/gotypes";
-import { useNavigate } from "@tanstack/react-router";
 import { useUser } from "@/hooks/useUser";
 import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -61,7 +58,6 @@ export default function Settings() {
   const [isAwaitingConnection, setIsAwaitingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
-  const navigate = useNavigate();
   const {
     cloudDisabled,
     cloudStatus,
@@ -214,7 +210,7 @@ export default function Settings() {
         Agent: false,
         Tools: false,
         ContextLength: 0,
-        AutoUpdateEnabled: true,
+        AutoUpdateEnabled: false,
       });
       updateSettingsMutation.mutate(defaultSettings);
     }
@@ -266,49 +262,15 @@ export default function Settings() {
 
   if (error || !settings) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex items-center justify-center p-4">
         <div className="text-red-500">Failed to load settings</div>
       </div>
     );
   }
 
-  const isWindows = navigator.platform.toLowerCase().includes("win");
-  const handleCloseSettings = () => {
-    const chatId = settings.LastHomeView === "chat" ? "new" : "launch";
-    navigate({ to: "/c/$chatId", params: { chatId } });
-  };
-
   return (
-    <main className="flex h-screen w-full flex-col select-none dark:bg-neutral-900">
-      <header
-        className="w-full flex flex-none justify-between h-[52px] py-2.5 items-center border-b border-neutral-200 dark:border-neutral-800 select-none"
-        onMouseDown={() => window.drag && window.drag()}
-        onDoubleClick={() => window.doubleClick && window.doubleClick()}
-      >
-        <h1
-          className={`${isWindows ? "pl-4" : "pl-24"} flex items-center font-rounded text-md font-medium dark:text-white`}
-        >
-          {isWindows && (
-            <button
-              onClick={handleCloseSettings}
-              className="hover:bg-neutral-100 mr-3 dark:hover:bg-neutral-800 rounded-full p-1.5"
-            >
-              <ArrowLeftIcon className="w-5 h-5 dark:text-white" />
-            </button>
-          )}
-          Settings
-        </h1>
-        {!isWindows && (
-          <button
-            onClick={handleCloseSettings}
-            className="p-1 hover:bg-neutral-100 mr-3 dark:hover:bg-neutral-800 rounded-full"
-          >
-            <XMarkIcon className="w-6 h-6 dark:text-white" />
-          </button>
-        )}
-      </header>
-      <div className="w-full p-6 overflow-y-auto flex-1 overscroll-contain">
-        <div className="space-y-4 max-w-2xl mx-auto">
+    <div className="w-full p-6 overflow-y-auto flex-1 overscroll-contain">
+      <div className="space-y-4 max-w-2xl mx-auto">
           {/* Connect Ollama Account */}
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="p-4">
@@ -469,6 +431,48 @@ export default function Settings() {
                 </div>
               </Field>
 
+              {/* Chat Import / Export */}
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <ArrowDownTrayIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                    <div>
+                      <Label>Chat backup</Label>
+                      <Description>
+                        Export all chats as a JSON file or import from a previous backup.
+                      </Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 flex gap-2">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await window.exportAllChats();
+                        } catch (e) {
+                          console.error("Export failed:", e);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
+                    >
+                      Export
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await window.importChats();
+                          queryClient.invalidateQueries({ queryKey: ["chats"] });
+                        } catch (e) {
+                          console.error("Import failed:", e);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
+                    >
+                      Import
+                    </button>
+                  </div>
+                </div>
+              </Field>
+
               {/* Expose Ollama */}
               <Field>
                 <div className="flex items-start justify-between gap-4">
@@ -621,20 +625,18 @@ export default function Settings() {
               Reset to defaults
             </Button>
           </div>
-        </div>
-
-        {/* Saved indicator */}
-        {(showSaved || restartMessage) && (
-          <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 transition-opacity duration-300 z-50">
-            <Badge
-              color="green"
-              className="!bg-green-500 !text-white dark:!bg-green-600"
-            >
-              Saved
-            </Badge>
-          </div>
-        )}
       </div>
-    </main>
+
+      {(showSaved || restartMessage) && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 transition-opacity duration-300 z-50">
+          <Badge
+            color="green"
+            className="!bg-green-500 !text-white dark:!bg-green-600"
+          >
+            Saved
+          </Badge>
+        </div>
+      )}
+    </div>
   );
 }

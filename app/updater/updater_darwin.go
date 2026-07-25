@@ -434,7 +434,7 @@ func IsUpdatePending() bool {
 func chownWithAuthorization(user string) bool {
 	u := C.CString(user)
 	defer C.free(unsafe.Pointer(u))
-	return (bool)(C.chownWithAuthorization(u))
+	return bool(C.chownWithAuthorization(u))
 }
 
 func verifyExtractedBundle(path string) error {
@@ -462,7 +462,8 @@ func alreadyMoved() string {
 	// Respect users intent if they chose "keep" vs. "replace" when dragging to Applications
 	installedAppPaths, err := filepath.Glob(filepath.Join(
 		strings.TrimSuffix(SystemWidePath, filepath.Ext(SystemWidePath))+"*"+filepath.Ext(SystemWidePath),
-		"Contents", "MacOS", "Ollama"))
+		"Contents", "MacOS", "Ollama",
+	))
 	if err != nil {
 		slog.Warn("failed to lookup installed app paths", "error", err)
 		return ""

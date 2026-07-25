@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package main
 
@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/google/uuid"
 	"github.com/ollama/ollama/app/dialog"
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/webview"
@@ -234,11 +235,11 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 		})
 
 		wv.Bind("ready", func() {
-			showWindow(wv.Window())
+			showWindowSync(wv.Window())
 		})
 
 		wv.Bind("close", func() {
-			hideWindow(wv.Window())
+			hideWindowSync(wv.Window())
 		})
 
 		// Webviews do not allow access to the file system by default, so we need to
@@ -357,6 +358,107 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 			}()
 		})
 
+		// Bind selectAudioFile function for selecting a single audio file
+		wv.Bind("selectAudioFile", func() {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__selectAudioFileCallback && window.__selectAudioFileCallback(%s)", dataJSON))
+					})
+				}
+
+				filename, err := dialog.File().
+					Filter("Audio Files", "wav", "mp3", "ogg").
+					Title("Select Audio File").
+					Load()
+				if err != nil {
+					slog.Debug("Audio file selection cancelled or failed", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				fileBytes, err := os.ReadFile(filename)
+				if err != nil {
+					slog.Error("failed to read audio file", "error", err, "filename", filename)
+					callCallback(nil)
+					return
+				}
+
+				mimeType := http.DetectContentType(fileBytes)
+				dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(fileBytes))
+
+				fileResult := map[string]string{
+					"filename": filepath.Base(filename),
+					"path":     filename,
+					"dataURL":  dataURL,
+				}
+				callCallback(fileResult)
+			}()
+		})
+
+		// Bind selectImageFiles function for selecting multiple image files only
+		wv.Bind("selectImageFiles", func() {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__selectImageFilesCallback && window.__selectImageFilesCallback(%s)", dataJSON))
+					})
+				}
+
+				imageExts := []string{"png", "jpg", "jpeg", "webp", "gif"}
+
+				filenames, err := dialog.File().
+					Filter("Image Files", imageExts...).
+					Title("Select Images").
+					LoadMultiple()
+				if err != nil {
+					slog.Debug("Image file selection cancelled or failed", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				if len(filenames) == 0 {
+					callCallback(nil)
+					return
+				}
+
+				var files []map[string]string
+				maxFileSize := int64(10 * 1024 * 1024) // 10MB
+
+				for _, filename := range filenames {
+					fileBytes, err := os.ReadFile(filename)
+					if err != nil {
+						slog.Error("failed to read image file", "error", err, "filename", filename)
+						continue
+					}
+
+					if int64(len(fileBytes)) > maxFileSize {
+						slog.Warn("image file too large, skipping", "filename", filepath.Base(filename), "size", len(fileBytes))
+						continue
+					}
+
+					mimeType := http.DetectContentType(fileBytes)
+					dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(fileBytes))
+
+					fileResult := map[string]string{
+						"filename": filepath.Base(filename),
+						"path":     filename,
+						"dataURL":  dataURL,
+					}
+
+					files = append(files, fileResult)
+				}
+
+				if len(files) == 0 {
+					callCallback(nil)
+				} else {
+					callCallback(files)
+				}
+			}()
+		})
+
 		wv.Bind("drag", func() {
 			wv.Dispatch(func() {
 				drag(wv.Window())
@@ -391,6 +493,237 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 			}()
 		})
 
+		// Export a single chat to a JSON file
+		wv.Bind("exportChat", func(chatId string) {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__exportChatCallback && window.__exportChatCallback(%s)", dataJSON))
+					})
+				}
+
+				chat, err := w.Store.Chat(chatId)
+				if err != nil {
+					slog.Error("failed to load chat for export", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				slug := strings.Map(func(r rune) rune {
+					if r > 127 || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+						return r
+					}
+					return '_'
+				}, strings.ToLower(chat.Title))
+				if len(slug) > 40 {
+					slug = slug[:40]
+				}
+				if slug == "" || slug == "_" {
+					slug = "chat"
+				}
+
+				date := time.Now().Format("2006-01-02")
+				defaultName := fmt.Sprintf("chat-%s-%s.json", slug, date)
+
+				path, err := dialog.File().
+					Title("Export Chat").
+					Filter("JSON files", "json").
+					SetStartFile(defaultName).
+					Save()
+				if err != nil {
+					slog.Debug("export save cancelled", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				export := map[string]interface{}{
+					"version": 1,
+					"type":    "chat",
+					"chat":    chat,
+				}
+
+				data, err := json.MarshalIndent(export, "", "  ")
+				if err != nil {
+					slog.Error("failed to marshal chat export", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					slog.Error("failed to write chat export", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				slog.Info("chat exported", "chat_id", chatId, "path", path)
+				callCallback(map[string]interface{}{"success": true, "path": path})
+			}()
+		})
+
+		// Export all chats to a JSON file
+		wv.Bind("exportAllChats", func() {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__exportAllChatsCallback && window.__exportAllChatsCallback(%s)", dataJSON))
+					})
+				}
+
+				chats, err := w.Store.Chats()
+				if err != nil {
+					slog.Error("failed to load chats for export", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				// Load full chat data including attachments for each chat
+				var fullChats []*store.Chat
+				for _, c := range chats {
+					full, err := w.Store.Chat(c.ID)
+					if err != nil {
+						slog.Warn("failed to load chat for export", "chat_id", c.ID, "error", err)
+						continue
+					}
+					fullChats = append(fullChats, full)
+				}
+
+				date := time.Now().Format("2006-01-02")
+				defaultName := fmt.Sprintf("ollama-chats-%s.json", date)
+
+				path, err := dialog.File().
+					Title("Export All Chats").
+					Filter("JSON files", "json").
+					SetStartFile(defaultName).
+					Save()
+				if err != nil {
+					slog.Debug("export all save cancelled", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				export := map[string]interface{}{
+					"version": 1,
+					"type":    "chats",
+					"chats":   fullChats,
+				}
+
+				data, err := json.MarshalIndent(export, "", "  ")
+				if err != nil {
+					slog.Error("failed to marshal chats export", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					slog.Error("failed to write chats export", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				slog.Info("chats exported", "count", len(fullChats), "path", path)
+				callCallback(map[string]interface{}{"success": true, "path": path, "count": len(fullChats)})
+			}()
+		})
+
+		// Import chats from a JSON file
+		wv.Bind("importChats", func() {
+			go func() {
+				callCallback := func(data interface{}) {
+					dataJSON, _ := json.Marshal(data)
+					wv.Dispatch(func() {
+						wv.Eval(fmt.Sprintf("window.__importChatsCallback && window.__importChatsCallback(%s)", dataJSON))
+					})
+				}
+
+				path, err := dialog.File().
+					Title("Import Chats").
+					Filter("JSON files", "json").
+					Load()
+				if err != nil {
+					slog.Debug("import open cancelled", "error", err)
+					callCallback(nil)
+					return
+				}
+
+				data, err := os.ReadFile(path)
+				if err != nil {
+					slog.Error("failed to read import file", "error", err)
+					callCallback(map[string]interface{}{"error": err.Error()})
+					return
+				}
+
+				var importData struct {
+					Version int          `json:"version"`
+					Type    string       `json:"type"`
+					Chat    *store.Chat  `json:"chat,omitempty"`
+					Chats   []store.Chat `json:"chats,omitempty"`
+				}
+
+				if err := json.Unmarshal(data, &importData); err != nil {
+					slog.Error("failed to parse import file", "error", err)
+					callCallback(map[string]interface{}{"error": "Invalid JSON format: " + err.Error()})
+					return
+				}
+
+				var chatsToImport []store.Chat
+				switch importData.Type {
+				case "chat":
+					if importData.Chat != nil {
+						chatsToImport = append(chatsToImport, *importData.Chat)
+					}
+				case "chats":
+					chatsToImport = append(chatsToImport, importData.Chats...)
+				default:
+					callCallback(map[string]interface{}{"error": "Unknown import type: " + importData.Type})
+					return
+				}
+
+				if len(chatsToImport) == 0 {
+					callCallback(map[string]interface{}{"error": "No chats found in import file"})
+					return
+				}
+				imported := 0
+				// Build a set of existing chat titles for dedup
+				existingChats, _ := w.Store.Chats()
+				existingTitles := make(map[string]int)
+				for _, c := range existingChats {
+					title := c.Title
+					if title == "" {
+						title = "Untitled"
+					}
+					existingTitles[title]++
+				}
+				importTitles := make(map[string]int)
+
+				for _, chat := range chatsToImport {
+					chat.ID = uuid.New().String()
+
+					title := chat.Title
+					if title == "" {
+						title = "Untitled"
+					}
+
+					// Dedup title: count occurrences across existing and this batch
+					importTitles[title]++
+					total := existingTitles[title] + importTitles[title]
+					if total > 1 {
+						chat.Title = fmt.Sprintf("%s (%d)", title, total-1)
+					}
+
+					if err := w.Store.SetChat(chat); err != nil {
+						slog.Error("failed to import chat", "error", err)
+						continue
+					}
+					imported++
+				}
+
+				slog.Info("chats imported", "count", imported, "file", path)
+				callCallback(map[string]interface{}{"success": true, "count": imported})
+			}()
+		})
+
 		wv.Bind("setContextMenuItems", func(items []map[string]interface{}) error {
 			menuMutex.Lock()
 			defer menuMutex.Unlock()
@@ -419,6 +752,12 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 			return nil
 		})
 
+		wv.Bind("focusWindow", func() {
+			wv.Dispatch(func() {
+				wv.Eval("window.focus()")
+			})
+		})
+
 		// Debounce resize events
 		var resizeTimer *time.Timer
 		var resizeMutex sync.Mutex
@@ -440,9 +779,10 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 		})
 
 		// On Darwin, we can't have 2 threads both running global event loops
+		// On Linux/GTK, gtk_main() must run on the main thread
 		// but on Windows, the event loops are tied to the window, so we're
 		// able to run in both the tray and webview
-		if runtime.GOOS != "darwin" {
+		if runtime.GOOS == "windows" {
 			slog.Debug("starting webview event loop")
 			go func() {
 				wv.Run()

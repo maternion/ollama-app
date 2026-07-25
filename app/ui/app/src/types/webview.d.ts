@@ -15,8 +15,17 @@ interface MenuItem {
 interface WebviewAPI {
   selectFile: () => Promise<ImageData | null>;
   selectMultipleFiles: () => Promise<ImageData[] | null>;
+  selectImageFiles: () => Promise<ImageData[] | null>;
+  selectAudioFile: () => Promise<ImageData | null>;
   selectModelsDirectory: () => Promise<string | null>;
   selectWorkingDirectory: () => Promise<string | null>;
+}
+
+interface ExportResult {
+  success?: true;
+  path?: string;
+  count?: number;
+  error?: string;
 }
 
 declare global {
@@ -27,6 +36,10 @@ declare global {
     menu: (items: MenuItem[]) => Promise<string | null>;
     OLLAMA_TOOLS?: boolean;
     OLLAMA_WEBSEARCH?: boolean;
+
+    exportChat(chatId: string): Promise<ExportResult>;
+    exportAllChats(): Promise<ExportResult>;
+    importChats(): Promise<ExportResult>;
   }
 
   namespace JSX {

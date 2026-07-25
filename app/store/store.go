@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 // Package store provides a simple JSON file store for the desktop application
 // to save and load data such as ollama server configuration, messages,
@@ -46,6 +46,9 @@ type Message struct {
 	UpdatedAt         time.Time        `json:"updated_at"`
 	ThinkingTimeStart *time.Time       `json:"thinkingTimeStart,omitempty" ts_type:"Date | undefined" ts_transform:"__VALUE__ && new Date(__VALUE__)"`
 	ThinkingTimeEnd   *time.Time       `json:"thinkingTimeEnd,omitempty" ts_type:"Date | undefined" ts_transform:"__VALUE__ && new Date(__VALUE__)"`
+	EvalCount         *int             `json:"evalCount,omitempty" ts_type:"number | undefined"`
+	TokensPerSecond   *float64         `json:"tokensPerSecond,omitempty" ts_type:"number | undefined"`
+	EvalDuration      *string          `json:"evalDuration,omitempty" ts_type:"string | undefined"`
 }
 
 // MessageOptions contains optional parameters for creating a Message
@@ -173,6 +176,34 @@ type Settings struct {
 	// AutoUpdateEnabled indicates if automatic updates should be downloaded
 	AutoUpdateEnabled bool
 }
+
+// DefaultModelsDir returns the default models directory for the app.
+// Priority: OLLAMA_MODELS env var > systemd service env > system ollama installation > $HOME/.ollama/models
+func DefaultModelsDir() string {
+	if dir := os.Getenv("OLLAMA_MODELS"); dir != "" {
+		return dir
+	}
+	if dir := systemdServiceModelsDir(); dir != "" {
+		return dir
+	}
+	systemDir := "/usr/share/ollama/.ollama/models"
+	if info, err := os.Stat(systemDir); err == nil && info.IsDir() {
+		return systemDir
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(home, ".ollama", "models")
+	}
+	return ".ollama/models"
+}
+
+// systemdServiceModelsDir returns OLLAMA_MODELS from the systemd service env.
+// Default implementation returns empty string; Linux overrides it.
+var systemdServiceModelsDir = func() string { return "" }
+
+// restartService restarts the ollama service. On Linux it uses systemd via pkexec.
+// Default implementation is a no-op; Linux overrides it.
+var restartService = func() error { return nil }
 
 type Store struct {
 	// DBPath allows overriding the default database path (mainly for testing)
@@ -381,15 +412,7 @@ func (s *Store) Settings() (Settings, error) {
 
 	// Set default models directory if not set
 	if settings.Models == "" {
-		dir := os.Getenv("OLLAMA_MODELS")
-		if dir != "" {
-			settings.Models = dir
-		} else {
-			home, err := os.UserHomeDir()
-			if err == nil {
-				settings.Models = filepath.Join(home, ".ollama", "models")
-			}
-		}
+		settings.Models = DefaultModelsDir()
 	}
 
 	if settings.LastHomeView == "" {
@@ -405,6 +428,12 @@ func (s *Store) SetSettings(settings Settings) error {
 	}
 
 	return s.db.setSettings(settings)
+}
+
+// RestartOllamaService restarts the ollama service.
+// On Linux, this uses systemctl via pkexec. On other platforms it's a no-op.
+func (s *Store) RestartOllamaService() error {
+	return restartService()
 }
 
 func (s *Store) Chats() ([]Chat, error) {

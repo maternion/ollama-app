@@ -66,6 +66,34 @@
         };
       }
 
+      // Add audio file selection method if available
+      if (typeof window.selectAudioFile === "function") {
+        window.webview = window.webview || {};
+        window.webview.selectAudioFile = function () {
+          return new Promise((resolve) => {
+            window.__selectAudioFileCallback = (data) => {
+              window.__selectAudioFileCallback = null;
+              resolve(data); // Returns single file or null if cancelled
+            };
+            window.selectAudioFile();
+          });
+        };
+      }
+
+      // Add image file selection method if available
+      if (typeof window.selectImageFiles === "function") {
+        window.webview = window.webview || {};
+        window.webview.selectImageFiles = function () {
+          return new Promise((resolve) => {
+            window.__selectImageFilesCallback = (data) => {
+              window.__selectImageFilesCallback = null;
+              resolve(data); // Returns array of files or null if cancelled
+            };
+            window.selectImageFiles();
+          });
+        };
+      }
+
       if (typeof window.ready === "function") {
         const callReady = () => setTimeout(window.ready, 100);
         if (document.readyState === "complete") {

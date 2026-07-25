@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package tools
 
@@ -87,6 +87,9 @@ func (w *WebSearch) Execute(ctx context.Context, args map[string]any) (any, stri
 	result, err := performWebSearch(ctx, queryStr, maxResults)
 	if err != nil {
 		return nil, "", err
+	}
+	for _, result := range result.Results {
+		addAllowedDirectURL(ctx, result.URL)
 	}
 
 	return result, "", nil

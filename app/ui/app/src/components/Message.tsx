@@ -973,7 +973,7 @@ function OtherRoleMessage({
         message.content.trim() &&
         (!message.tool_calls || message.tool_calls.length === 0) &&
         !message.tool_call && (
-          <div className="-ml-1">
+          <div className="flex items-center gap-2 -ml-1">
             <CopyButton
               content={message.content || ""}
               copyRef={messageRef as React.RefObject<HTMLElement>}
@@ -983,6 +983,15 @@ function OtherRoleMessage({
               className="copy-button z-10 text-neutral-500 dark:text-neutral-400"
               title="Copy"
             />
+            {((message as any).evalCount != null || (message as any).tokensPerSecond != null || (message as any).evalDuration != null) && (
+              <span className="text-sm text-neutral-400 dark:text-neutral-500 select-none">
+                {(message as any).evalDuration != null && `${(message as any).evalDuration}`}
+                {(message as any).evalDuration != null && (message as any).tokensPerSecond != null && " \u00B7 "}
+                {(message as any).tokensPerSecond != null && `${(message as any).tokensPerSecond.toFixed(1)} tok/s`}
+                {((message as any).evalDuration != null || (message as any).tokensPerSecond != null) && (message as any).evalCount != null && " \u00B7 "}
+                {(message as any).evalCount != null && `${(message as any).evalCount} tokens`}
+              </span>
+            )}
           </div>
         )}
     </div>

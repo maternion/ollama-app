@@ -116,6 +116,9 @@ export class Message {
     updated_at: Time;
     thinkingTimeStart?: Date | undefined;
     thinkingTimeEnd?: Date | undefined;
+    evalCount?: number | undefined;
+    tokensPerSecond?: number | undefined;
+    evalDuration?: string | undefined;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -133,6 +136,9 @@ export class Message {
         this.updated_at = this.convertValues(source["updated_at"], Time);
         this.thinkingTimeStart = source["thinkingTimeStart"] && new Date(source["thinkingTimeStart"]);
         this.thinkingTimeEnd = source["thinkingTimeEnd"] && new Date(source["thinkingTimeEnd"]);
+        this.evalCount = source["evalCount"];
+        this.tokensPerSecond = source["tokensPerSecond"];
+        this.evalDuration = source["evalDuration"];
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -324,7 +330,7 @@ export class ModelCapabilitiesResponse {
     }
 }
 export class ChatEvent {
-    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created";
+    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created" | "stats";
     content?: string;
     thinking?: string;
     thinkingTimeStart?: Date | undefined;
@@ -335,6 +341,9 @@ export class ChatEvent {
     toolResult?: boolean;
     toolResultData?: any;
     chatId?: string;
+    evalCount?: number;
+    evalDuration?: string;
+    tokensPerSecond?: number;
     toolState?: any;
 
     constructor(source: any = {}) {
@@ -350,6 +359,9 @@ export class ChatEvent {
         this.toolResult = source["toolResult"];
         this.toolResultData = source["toolResultData"];
         this.chatId = source["chatId"];
+        this.evalCount = source["evalCount"];
+        this.evalDuration = source["evalDuration"];
+        this.tokensPerSecond = source["tokensPerSecond"];
         this.toolState = source["toolState"];
     }
 
@@ -548,6 +560,24 @@ export class Error {
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
+        this.error = source["error"];
+    }
+}
+export class UpdateInfo {
+    version?: string;
+    downloadUrl?: string;
+    downloading: boolean;
+    downloaded: boolean;
+    downloadBytes?: number;
+    error?: string;
+
+    constructor(source: any = {}) {
+        if ('string' === typeof source) source = JSON.parse(source);
+        this.version = source["version"];
+        this.downloadUrl = source["downloadUrl"];
+        this.downloading = source["downloading"];
+        this.downloaded = source["downloaded"];
+        this.downloadBytes = source["downloadBytes"];
         this.error = source["error"];
     }
 }

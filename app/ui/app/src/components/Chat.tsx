@@ -4,6 +4,7 @@ import { FileUpload } from "./FileUpload";
 import { DisplayUpgrade } from "./DisplayUpgrade";
 import { DisplayStale } from "./DisplayStale";
 import { DisplayLogin } from "./DisplayLogin";
+import { UpdateBanner } from "./UpdateBanner";
 import {
   useChat,
   useSendMessage,
@@ -41,6 +42,7 @@ export default function Chat({ chatId }: { chatId: string }) {
   const shouldShowStaleDisplay = useShouldShowStaleDisplay(selectedModel);
   const dismissStaleModel = useDismissStaleModel();
   const { isHealthy } = useHealth();
+  const sendMessageMutation = useSendMessage(chatId);
 
   const [editingMessage, setEditingMessage] = useState<{
     content: string;
@@ -99,8 +101,6 @@ export default function Chat({ chatId }: { chatId: string }) {
   useEffect(() => {
     setEditingMessage(null);
   }, [chatId]);
-
-  const sendMessageMutation = useSendMessage(chatId);
 
   const { containerRef, handleNewUserMessage, spacerHeight } =
     useMessageAutoscroll({
@@ -240,6 +240,9 @@ export default function Chat({ chatId }: { chatId: string }) {
           </section>
 
           <div className="flex-shrink-0 sticky bottom-0 z-20">
+            <div className="pb-2">
+              <UpdateBanner />
+            </div>
             {selectedModel && shouldShowStaleDisplay && (
               <div className="pb-2">
                 <DisplayStale

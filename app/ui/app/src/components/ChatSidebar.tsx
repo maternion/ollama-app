@@ -1,12 +1,14 @@
 import { useChats } from "@/hooks/useChats";
 import { useRenameChat } from "@/hooks/useRenameChat";
 import { useDeleteChat } from "@/hooks/useDeleteChat";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { getChat } from "@/api";
 import { Link } from "@/components/ui/link";
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { ChatsResponse } from "@/gotypes";
-import { CogIcon, RocketLaunchIcon } from "@heroicons/react/24/outline";
+import { CogIcon, RocketLaunchIcon, EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
+import { useMatchRoute } from "@tanstack/react-router";
 
 // there's a hidden debug feature to copy a chat's data to the clipboard by
 // holding shift and clicking this many times within this many seconds
@@ -23,11 +25,17 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
   const queryClient = useQueryClient();
   const renameMutation = useRenameChat();
   const deleteMutation = useDeleteChat();
-  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const isOnSettings = !!useMatchRoute()({ to: "/settings" });
+const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteTitle, setPendingDeleteTitle] = useState<string>("");
+  const pendingDeleteIdRef = useRef<string | null>(null);
   const [shiftClicks, setShiftClicks] = useState<Record<string, number[]>>({});
   const [copiedChatId, setCopiedChatId] = useState<string | null>(null);
+  const [menuOpenChatId, setMenuOpenChatId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = useCallback(
     (chatId: string) => {
@@ -164,22 +172,46 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
     ].filter((group) => group.chats.length > 0);
   }, [groupedChats]);
 
-  const handleDeleteChat = useCallback(
-    async (chatId: string) => {
-      const confirmed = window.confirm(
-        `Are you sure you want to remove this chat?`,
-      );
+  const confirmDeleteChat = async () => {
+    const chatId = pendingDeleteIdRef.current;
+    if (!chatId) return;
+    pendingDeleteIdRef.current = null;
+    setPendingDeleteId(null);
+    setPendingDeleteTitle("");
+    try {
+      await deleteMutation.mutateAsync(chatId);
+    } catch (error) {
+      console.error("Failed to delete chat:", error);
+    }
+  };
 
-      if (!confirmed) return;
+  // Keep ref in sync for the confirm callback
+  useEffect(() => {
+    pendingDeleteIdRef.current = pendingDeleteId;
+  }, [pendingDeleteId]);
 
-      try {
-        await deleteMutation.mutateAsync(chatId);
-      } catch (error) {
-        console.error("Failed to delete chat:", error);
+  const handleExportChat = useCallback(async (chatId: string) => {
+    try {
+      await window.exportChat(chatId);
+    } catch (error) {
+      console.error("Failed to export chat:", error);
+    }
+    setMenuOpenChatId(null);
+  }, []);
+
+  // Close 3-dot menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      // If clicking inside the currently-open menu wrapper, do nothing
+      if (target?.closest('[data-menu-open="true"]')) {
+        return;
       }
-    },
-    [deleteMutation],
-  );
+      setMenuOpenChatId(null);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // implementation of the hidden debug feature to copy a chat's data to the clipboard
   const handleShiftClick = useCallback(
@@ -228,16 +260,20 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
     async (_: React.MouseEvent, chatId: string, chatTitle: string) => {
       const selectedAction = await window.menu([
         { label: "Rename", enabled: true },
+        { label: "Export", enabled: true },
         { label: "Delete", enabled: true },
       ]);
 
       if (selectedAction === "Rename") {
         startEditing(chatId, chatTitle);
+      } else if (selectedAction === "Export") {
+        handleExportChat(chatId);
       } else if (selectedAction === "Delete") {
-        handleDeleteChat(chatId);
+        setPendingDeleteId(chatId);
+        setPendingDeleteTitle(chatTitle);
       }
     },
-    [startEditing, handleDeleteChat],
+    [startEditing, handleExportChat],
   );
 
   if (isLoading) {
@@ -259,8 +295,6 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
       </nav>
     );
   }
-
-  const isWindows = navigator.platform.toLowerCase().includes("win");
 
   return (
     <nav className="flex flex-1 flex-col min-h-0 select-none">
@@ -300,16 +334,14 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
           <RocketLaunchIcon className="h-5 w-5 stroke-current" />
           <span className="truncate">Launch</span>
         </Link>
-        {isWindows && (
-          <Link
-            href="/settings"
-            className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:text-neutral-300`}
-            draggable={false}
-          >
-            <CogIcon className="h-5 w-5 stroke-current" />
-            <span className="truncate">Settings</span>
-          </Link>
-        )}
+        <Link
+          to="/settings"
+          className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:text-neutral-300 ${isOnSettings ? "bg-neutral-100 text-black dark:bg-neutral-800" : ""}`}
+          draggable={false}
+        >
+          <CogIcon className="h-5 w-5 stroke-current" />
+          <span className="truncate">Settings</span>
+        </Link>
       </header>
       <div className="flex flex-1 flex-col px-4 py-1 overflow-y-auto overscroll-auto scrollbar-gutter">
         <div className="flex flex-col gap-3 pt-4">
@@ -321,7 +353,7 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
               {group.chats.map((chat) => (
                 <div
                   key={chat.id}
-                  className={`allow-context-menu flex items-center relative text-sm text-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 ${chat.id === currentChatId
+                  className={`group allow-context-menu flex items-center relative text-sm text-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 ${chat.id === currentChatId
                     ? "bg-neutral-100 text-black dark:bg-neutral-800"
                     : ""
                     }`}
@@ -364,26 +396,87 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
                       </span>
                     </div>
                   ) : (
-                    <Link
-                      to="/c/$chatId"
-                      params={{ chatId: chat.id }}
-                      className="flex-1 flex items-center min-w-0 px-2 py-2 select-none"
-                      onClick={(e) => {
-                        handleShiftClick(e, chat.id);
-                      }}
-                      draggable={false}
-                    >
-                      <span className="truncate font-sans text-sm">
-                        {chat.title ||
-                          chat.userExcerpt ||
-                          chat.createdAt.toLocaleString()}
-                      </span>
-                      {copiedChatId === chat.id && (
-                        <span className="ml-2 text-xs text-green-600 dark:text-green-400">
-                          Copied!
+                    <>
+                      <Link
+                        to="/c/$chatId"
+                        params={{ chatId: chat.id }}
+                        className="flex-1 flex items-center min-w-0 px-2 py-2 select-none"
+                        onClick={(e) => {
+                          handleShiftClick(e, chat.id);
+                          setMenuOpenChatId(null);
+                        }}
+                        draggable={false}
+                      >
+                        <span className="truncate font-sans text-sm">
+                          {chat.title ||
+                            chat.userExcerpt ||
+                            chat.createdAt.toLocaleString()}
                         </span>
-                      )}
-                    </Link>
+                        {copiedChatId === chat.id && (
+                          <span className="ml-2 text-xs text-green-600 dark:text-green-400">
+                            Copied!
+                          </span>
+                        )}
+                      </Link>
+                      <div
+                        ref={menuOpenChatId === chat.id ? menuRef : undefined}
+                        data-menu-open={menuOpenChatId === chat.id ? "true" : undefined}
+                        className={`relative flex-shrink-0 ${menuOpenChatId === chat.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 transition-opacity"}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setMenuOpenChatId(menuOpenChatId === chat.id ? null : chat.id);
+                          }}
+                          className="p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 cursor-pointer"
+                          title="More actions"
+                          aria-label={`Actions for ${chat.title || "chat"}`}
+                        >
+                          <EllipsisHorizontalIcon className="w-5 h-5" />
+                        </button>
+                        {menuOpenChatId === chat.id && (
+                          <div
+                            className="absolute right-0 top-full mt-1 z-50 min-w-[140px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl py-1 origin-top-right"
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                startEditing(chat.id, chat.title || "");
+                                setMenuOpenChatId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
+                            >
+                              Rename
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleExportChat(chat.id);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
+                            >
+                              Export
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPendingDeleteId(chat.id);
+                                setPendingDeleteTitle(chat.title || "");
+                                setMenuOpenChatId(null);
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer border-t border-neutral-200 dark:border-neutral-700"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               ))}
@@ -391,6 +484,23 @@ export function ChatSidebar({ currentChatId }: ChatSidebarProps) {
           ))}
         </div>
       </div>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete chat?"
+        message={
+          pendingDeleteTitle
+            ? `Are you sure you want to delete "${pendingDeleteTitle}"? This cannot be undone.`
+            : "Are you sure you want to delete this chat? This cannot be undone."
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={confirmDeleteChat}
+        onCancel={() => {
+          setPendingDeleteId(null);
+          setPendingDeleteTitle("");
+        }}
+      />
     </nav>
   );
 }

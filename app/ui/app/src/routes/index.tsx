@@ -13,9 +13,7 @@ export const Route = createFileRoute("/")({
     throw redirect({
       to: "/c/$chatId",
       params: { chatId },
-      mask: {
-        to: "/",
-      },
+      mask: { to: "/" },
     });
   },
 });

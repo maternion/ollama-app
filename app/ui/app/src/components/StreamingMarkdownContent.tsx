@@ -1,9 +1,15 @@
 import React from "react";
-import { Streamdown, defaultRemarkPlugins } from "streamdown";
+import {
+  Streamdown,
+  defaultRehypePlugins,
+  defaultRemarkPlugins,
+} from "streamdown";
 import remarkCitationParser from "@/utils/remarkCitationParser";
 import CopyButton from "./CopyButton";
+import CodePreview from "./CodePreview";
 import type { BundledLanguage } from "shiki";
 import { highlighter } from "@/lib/highlighter";
+import { EyeIcon } from "@heroicons/react/24/outline";
 
 interface StreamingMarkdownContentProps {
   content: string;
@@ -29,6 +35,8 @@ const extractText = (node: React.ReactNode): string => {
   return "";
 };
 
+const safeRehypePlugins = [defaultRehypePlugins.katex];
+
 const CodeBlock = React.memo(
   ({ children }: React.HTMLAttributes<HTMLPreElement>) => {
     // Extract code and language from children
@@ -39,6 +47,8 @@ const CodeBlock = React.memo(
     const language =
       codeElement.props.className?.replace(/language-/, "") || "";
     const codeText = extractText(codeElement.props.children);
+
+    const [previewOpen, setPreviewOpen] = React.useState(false);
 
     // Synchronously highlight code using the pre-loaded highlighter
     const tokens = React.useMemo(() => {
@@ -69,11 +79,23 @@ const CodeBlock = React.memo(
               {language}
             </div>
           )}
-          <CopyButton
-            content={codeText}
-            showLabels={true}
-            className="copy-button text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 ml-auto"
-          />
+          <div className="flex items-center gap-1 ml-auto">
+            {language.toLowerCase() === "html" && (
+              <button
+                onClick={() => setPreviewOpen(true)}
+                className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2 py-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+                title="Preview code"
+              >
+                <EyeIcon className="size-3.5" />
+                Preview
+              </button>
+            )}
+            <CopyButton
+              content={codeText}
+              showLabels={true}
+              className="copy-button text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800"
+            />
+          </div>
         </div>
         {/* Light mode */}
         <pre className="dark:hidden m-0 bg-neutral-100 text-sm overflow-x-auto p-4">
@@ -119,6 +141,12 @@ const CodeBlock = React.memo(
               : codeText}
           </code>
         </pre>
+        <CodePreview
+          open={previewOpen}
+          code={codeText}
+          language={language}
+          onOpenChange={setPreviewOpen}
+        />
       </div>
     );
   },
@@ -210,9 +238,12 @@ const StreamingMarkdownContent: React.FC<StreamingMarkdownContentProps> =
           <Streamdown
             parseIncompleteMarkdown={isStreaming}
             isAnimating={isStreaming}
+            rehypePlugins={safeRehypePlugins}
             remarkPlugins={remarkPlugins}
             controls={false}
             components={{
+              img: ({ alt }: React.ImgHTMLAttributes<HTMLImageElement>) =>
+                alt ? <span>{alt}</span> : null,
               pre: CodeBlock,
               table: ({
                 children,

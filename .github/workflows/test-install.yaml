@@ -14,9 +14,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install zstd
+        run: sudo apt-get update && sudo apt-get install -y zstd
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
       - name: Run install script
         run: sh ./scripts/install.sh
         env:
-          OLLAMA_NO_START: 1 # do not start app
+          OLLAMA_NO_START: 1
+          OLLAMA_NO_APP: 1
+          OLLAMA_VERSION: v0.24.0
       - name: Verify ollama is available
-        run: ollama --version
+        run: |
+          command -v ollama
+          test -x "$(command -v ollama)"

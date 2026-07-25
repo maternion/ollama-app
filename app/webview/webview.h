@@ -1141,7 +1141,11 @@ inline std::string json_parse(const std::string &s, const std::string &key,
 //
 #include <cstdlib>
 
+#ifdef USE_JSC_H
+#include <jsc/jsc.h>
+#else
 #include <JavaScriptCore/JavaScript.h>
+#endif
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
@@ -1311,6 +1315,21 @@ public:
 
     gtk_container_add(GTK_CONTAINER(m_window), GTK_WIDGET(m_webview));
     gtk_widget_show(GTK_WIDGET(m_webview));
+
+    g_signal_connect(G_OBJECT(m_webview), "create",
+                     G_CALLBACK(+[](WebKitWebView *, WebKitNavigationAction *action,
+                                    gpointer) -> GtkWidget * {
+                       auto *req = webkit_navigation_action_get_request(action);
+                       const gchar *uri = webkit_uri_request_get_uri(req);
+                       if (uri && g_str_has_prefix(uri, "http")) {
+                         GError *err = nullptr;
+                         g_spawn_command_line_async(
+                             (std::string("xdg-open ") + uri).c_str(), &err);
+                         if (err) { g_error_free(err); }
+                       }
+                       return nullptr;
+                     }),
+                     nullptr);
 
     WebKitSettings *settings =
         webkit_web_view_get_settings(WEBKIT_WEB_VIEW(m_webview));

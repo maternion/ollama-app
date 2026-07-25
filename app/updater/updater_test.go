@@ -74,7 +74,8 @@ func TestIsNewReleaseAvailable(t *testing.T) {
 		if r.URL.Path == "/update.json" {
 			w.Write([]byte(
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
-					server.URL+"/9.9.9/"+Installer)))
+					server.URL+"/9.9.9/"+Installer),
+			))
 			// TODO - wire up the redirects to mimic real behavior
 		} else {
 			slog.Debug("unexpected request", "url", r.URL)
@@ -228,7 +229,8 @@ func TestBackgroundCheckerSkipsAlreadyStagedETagDownload(t *testing.T) {
 		case "/update.json":
 			w.Write([]byte(
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
-					server.URL+"/9.9.9/"+Installer)))
+					server.URL+"/9.9.9/"+Installer),
+			))
 		case "/9.9.9/" + Installer:
 			w.Header().Set("Content-Disposition", `attachment; filename="OllamaSetup.exe"`)
 			switch r.Method {
@@ -337,7 +339,8 @@ func TestBackgoundChecker(t *testing.T) {
 		if r.URL.Path == "/update.json" {
 			w.Write([]byte(
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
-					server.URL+"/9.9.9/"+Installer)))
+					server.URL+"/9.9.9/"+Installer),
+			))
 			// TODO - wire up the redirects to mimic real behavior
 		} else if r.URL.Path == "/9.9.9/"+Installer {
 			buf := &bytes.Buffer{}
@@ -395,7 +398,8 @@ func TestAutoUpdateDisabledSkipsDownload(t *testing.T) {
 		if r.URL.Path == "/update.json" {
 			w.Write([]byte(
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
-					server.URL+"/9.9.9/"+Installer)))
+					server.URL+"/9.9.9/"+Installer),
+			))
 		} else if r.URL.Path == "/9.9.9/"+Installer {
 			downloadAttempted.Store(true)
 			buf := &bytes.Buffer{}
@@ -454,7 +458,8 @@ func TestAutoUpdateReenabledDownloadsUpdate(t *testing.T) {
 		if r.URL.Path == "/update.json" {
 			w.Write([]byte(
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
-					server.URL+"/9.9.9/"+Installer)))
+					server.URL+"/9.9.9/"+Installer),
+			))
 		} else if r.URL.Path == "/9.9.9/"+Installer {
 			downloadAttempted.Store(true)
 			buf := &bytes.Buffer{}
@@ -528,7 +533,8 @@ func TestCancelOngoingDownload(t *testing.T) {
 		if r.URL.Path == "/update.json" {
 			w.Write([]byte(
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
-					server.URL+"/9.9.9/"+Installer)))
+					server.URL+"/9.9.9/"+Installer),
+			))
 		} else if r.URL.Path == "/9.9.9/"+Installer {
 			if r.Method == http.MethodHead {
 				w.Header().Set("Content-Length", "1000000")

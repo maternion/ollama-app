@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package responses
 
@@ -55,7 +55,7 @@ type ModelCapabilitiesResponse struct {
 
 // ChatEvent is for regular chat messages and assistant interactions
 type ChatEvent struct {
-	EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\""`
+	EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\" | \"stats\""`
 
 	// Chat/Assistant message fields
 	Content           *string    `json:"content,omitempty"`
@@ -72,6 +72,11 @@ type ChatEvent struct {
 
 	// Chat creation fields
 	ChatID *string `json:"chatId,omitempty"`
+
+	// Stats fields (for stats event)
+	EvalCount       *int     `json:"evalCount,omitempty"`
+	EvalDuration    *string  `json:"evalDuration,omitempty"` // human-readable like "2.5s"
+	TokensPerSecond *float64 `json:"tokensPerSecond,omitempty"`
 
 	// Tool state field from the new code
 	ToolState any `json:"toolState,omitempty"`
@@ -130,6 +135,15 @@ type ChatRequest struct {
 
 type Error struct {
 	Error string `json:"error"`
+}
+
+type UpdateInfo struct {
+	Version       string `json:"version,omitempty"`
+	DownloadURL   string `json:"downloadUrl,omitempty"`
+	Downloading   bool   `json:"downloading"`
+	Downloaded    bool   `json:"downloaded"`
+	DownloadBytes int64  `json:"downloadBytes,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 type ModelUpstreamResponse struct {

