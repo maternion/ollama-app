@@ -49,6 +49,14 @@ jobs:
         run: |
           go install github.com/tkrajina/typescriptify-golang-structs/tscriptify@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      - name: Install linuxdeploy + GTK plugin
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O "$HOME/.local/bin/linuxdeploy"
+          chmod +x "$HOME/.local/bin/linuxdeploy"
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-x86_64.AppImage -O "$HOME/.local/bin/linuxdeploy-plugin-gtk.sh"
+          chmod +x "$HOME/.local/bin/linuxdeploy-plugin-gtk.sh"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Build Linux app
         run: ./scripts/build_linux_app.sh
       - name: Log build results
