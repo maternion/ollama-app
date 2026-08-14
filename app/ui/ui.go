@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/app/dialog"
 	"github.com/ollama/ollama/app/server"
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/tools"
@@ -52,6 +53,10 @@ var OllamaDotCom = func() string {
 	}
 	return "https://ollama.com"
 }()
+
+// maxRequestBodySize bounds request bodies decoded by API handlers to prevent
+// unbounded memory consumption (attachments are base64-decoded in full).
+const maxRequestBodySize = 32 << 20 // 32 MiB
 
 type statusRecorder struct {
 	http.ResponseWriter
@@ -198,6 +203,19 @@ type errHandlerFunc func(http.ResponseWriter, *http.Request) error
 func (s *Server) Handler() http.Handler {
 	handle := func(f errHandlerFunc) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Require a valid token on all API routes. The desktop app's
+			// webview sets this token as a cookie on first load. Requests
+			// without it (e.g. from other local processes or cross-origin
+			// pages) are rejected. The webview's token is only set for the
+			// session via JS; the SPA itself is served without a token so it
+			// can bootstrap, but all /api/ endpoints are protected.
+			if strings.HasPrefix(r.URL.Path, "/api/") && s.Token != "" {
+				c, err := r.Cookie("token")
+				if err != nil || c.Value != s.Token {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+			}
 			// Add CORS headers for dev work
 			if CORS() {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -247,10 +265,9 @@ func (s *Server) Handler() http.Handler {
 					"version", version.Version,
 				)
 
-				// let net/http.Server deal with panics
-				if p != nil {
-					panic(p)
-				}
+				// If the handler panicked, the response (if any) was already
+				// written above; do not re-panic, which would abort the
+				// connection and corrupt a partially-written chunked response.
 			}()
 
 			w.Header().Set("X-Frame-Options", "DENY")
@@ -328,9 +345,32 @@ func (s *Server) handleError(w http.ResponseWriter, e error) {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 
+	// Map common error types to appropriate HTTP status codes so client errors
+	// aren't reported as 500s.
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(e, not.Found):
+		status = http.StatusNotFound
+	case errors.Is(e, dialog.ErrCancelled):
+		status = http.StatusBadRequest
+	}
+	if _, ok := e.(not.ValidError); ok {
+		status = http.StatusBadRequest
+	}
+	if _, ok := e.(not.Valids); ok {
+		status = http.StatusBadRequest
+	}
+
+	// Only surface the raw error for server-side failures; client errors use a
+	// generic message to avoid leaking internals.
+	msg := e.Error()
+	if status == http.StatusInternalServerError {
+		msg = "internal server error"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	json.NewEncoder(w).Encode(map[string]string{"error": e.Error()})
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 // userAgentTransport is a custom RoundTripper that adds the User-Agent header to all requests
@@ -650,6 +690,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	var req responses.ChatRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		fmt.Fprintf(os.Stderr, "error unmarshalling body: %v\n", err)
 		return fmt.Errorf("invalid request body: %w", err)
@@ -747,6 +788,26 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 
 	_, cancelLoading := context.WithCancel(ctx)
 	loading := false
+
+	// Throttle intermediate streaming DB writes to reduce lock contention.
+	// The final SetChat below guarantees full persistence, so intermediate
+	// writes only provide crash-recovery and can be rate-limited.
+	const streamingFlushInterval = 250 * time.Millisecond
+	var lastStreamingFlush time.Time
+	flushStreamingMessage := func() {
+		if len(chat.Messages) == 0 || chat.Messages[len(chat.Messages)-1].Role != "assistant" {
+			return
+		}
+		now := time.Now()
+		if now.Sub(lastStreamingFlush) < streamingFlushInterval {
+			return
+		}
+		lastStreamingFlush = now
+		lastMsg := chat.Messages[len(chat.Messages)-1]
+		if err := s.Store.UpdateLastMessage(chat.ID, lastMsg); err != nil {
+			s.log().Debug("intermediate streaming flush failed", "error", err)
+		}
+	}
 
 	c := s.inferenceClient()
 
@@ -1170,10 +1231,8 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 				if thinkingTimeEnd != nil {
 					lastMsg.ThinkingTimeEnd = thinkingTimeEnd
 				}
-				// Use optimized update for streaming
-				if err := s.Store.UpdateLastMessage(chat.ID, *lastMsg); err != nil {
-					return err
-				}
+				// Throttled DB flush during streaming (full persist happens at SetChat below)
+				flushStreamingMessage()
 			case EventThinking:
 				// Persist thinking content
 				if len(chat.Messages) == 0 || chat.Messages[len(chat.Messages)-1].Role != "assistant" {
@@ -1209,10 +1268,8 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 						lastMsg.ThinkingTimeEnd = thinkingTimeEnd
 					}
 
-					// Use optimized update for streaming
-					if err := s.Store.UpdateLastMessage(chat.ID, *lastMsg); err != nil {
-						return err
-					}
+					// Throttled DB flush during streaming (full persist happens at SetChat below)
+					flushStreamingMessage()
 				}
 			}
 			return nil
@@ -1369,6 +1426,7 @@ func (s *Server) renameChat(w http.ResponseWriter, r *http.Request) error {
 	var req struct {
 		Title string `json:"title"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return fmt.Errorf("invalid request body: %w", err)
 	}
@@ -1398,12 +1456,7 @@ func (s *Server) deleteChat(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Check if the chat exists (no need to load attachments)
-	_, err := s.Store.ChatWithOptions(cid, false)
-	if err != nil {
-		if errors.Is(err, not.Found) {
-			w.WriteHeader(http.StatusNotFound)
-			return fmt.Errorf("chat not found")
-		}
+	if _, err := s.Store.ChatWithOptions(cid, false); err != nil {
 		return fmt.Errorf("failed to get chat: %w", err)
 	}
 
@@ -1604,7 +1657,7 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 
-		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf(`"%s" &`, installedPath))
+		cmd := exec.Command(installedPath)
 		if err := cmd.Start(); err != nil {
 			s.log().Error("failed to launch updated AppImage", "error", err)
 			return
@@ -1661,6 +1714,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	var settings store.Settings
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		return fmt.Errorf("invalid request body: %w", err)
 	}
@@ -1690,7 +1744,9 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) error {
 	if old.ContextLength != settings.ContextLength ||
 		old.Models != settings.Models ||
 		old.Expose != settings.Expose {
-		s.Restart()
+		if s.Restart != nil {
+			s.Restart()
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1703,6 +1759,7 @@ func (s *Server) cloudSetting(w http.ResponseWriter, r *http.Request) error {
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return fmt.Errorf("invalid request body: %w", err)
 	}
@@ -1711,7 +1768,9 @@ func (s *Server) cloudSetting(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("failed to persist cloud setting: %w", err)
 	}
 
-	s.Restart()
+	if s.Restart != nil {
+		s.Restart()
+	}
 
 	return s.writeCloudStatus(w)
 }
@@ -1771,6 +1830,7 @@ func (s *Server) modelUpstream(w http.ResponseWriter, r *http.Request) error {
 	var req struct {
 		Model string `json:"model"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return fmt.Errorf("invalid request body: %w", err)
 	}

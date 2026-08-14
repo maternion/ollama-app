@@ -3,6 +3,7 @@
 package main
 
 // #include "menu.h"
+// #include <stdlib.h>
 import "C"
 
 import (
@@ -730,6 +731,11 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 
 			if len(menuItems) > 0 {
 				pinner.Unpin()
+				// Free previously allocated C strings to avoid leaking on each
+				// context menu update.
+				for _, item := range menuItems {
+					C.free(unsafe.Pointer(item.label))
+				}
 			}
 
 			menuItems = nil
