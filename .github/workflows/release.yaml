@@ -29,7 +29,6 @@ jobs:
     environment: release
     needs: [setup-environment]
     env:
-      GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
       VERSION: ${{ needs.setup-environment.outputs.VERSION }}
     steps:
       - uses: actions/checkout@v4
