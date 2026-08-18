@@ -8,12 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/ollama/ollama/auth"
+	"github.com/ollama/ollama/envconfig"
 )
 
 type WebSearch struct{}
@@ -107,33 +104,19 @@ func performWebSearch(ctx context.Context, query string, maxResults int) (*Searc
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	searchURL, err := url.Parse("https://ollama.com/api/web_search")
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse search URL: %w", err)
-	}
+	// Route through the local Ollama server's proxy endpoint so that the
+	// server's registered signing key is used for ollama.com authentication.
+	// Going directly to ollama.com would use the app user's key, which may
+	// not be the key registered with the account.
+	targetURL := envconfig.Host().JoinPath("/api/experimental/web_search")
 
-	q := searchURL.Query()
-	q.Add("ts", strconv.FormatInt(time.Now().Unix(), 10))
-	searchURL.RawQuery = q.Encode()
-
-	data := fmt.Appendf(nil, "%s,%s", http.MethodPost, searchURL.RequestURI())
-	signature, err := auth.Sign(ctx, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, searchURL.String(), bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL.String(), bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
-	if signature != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signature))
-	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute search request: %w", err)
 	}
