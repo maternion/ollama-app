@@ -778,7 +778,7 @@ export default function Settings() {
                       checked={((settings as any)?.PdfMode || "text") === "text"}
                       onChange={() => handleChange("PdfMode" as any, "text")}
                     />
-                    <span className="text-sm">Extract text (works with all models)</span>
+                    <span className="text-sm text-neutral-700 dark:text-neutral-300">Extract text (works with all models)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -788,7 +788,7 @@ export default function Settings() {
                       checked={(settings as any)?.PdfMode === "images"}
                       onChange={() => handleChange("PdfMode" as any, "images")}
                     />
-                    <span className="text-sm">Render as images (requires vision model)</span>
+                    <span className="text-sm text-neutral-700 dark:text-neutral-300">Render as images (requires vision model)</span>
                   </label>
                 </div>
               </Field>

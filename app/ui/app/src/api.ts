@@ -237,7 +237,13 @@ export async function* sendMessage(
     ...(forceUpdate !== undefined ? { forceUpdate } : {}),
     ...(shouldSendThink ? { think } : {}),
   });
-  if (format) body.format = format;
+  if (format) {
+    try {
+      body.format = JSON.parse(format);
+    } catch {
+      body.format = format; // fallback: send as string (e.g., "json")
+    }
+  }
   if (systemMessage) body.system_message = systemMessage;
 
   const response = await fetch(`${API_BASE}/api/v1/chat/${chatId}`, {
