@@ -17,6 +17,9 @@ import { ErrorEvent, Message } from "@/gotypes";
 import { useSettings } from "@/hooks/useSettings";
 import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { ThinkButton } from "./ThinkButton";
+import { SystemPromptButton } from "@/components/SystemPromptButton";
+import { SchemaButton } from "@/components/SchemaButton";
+import { useJsonSchema } from "@/hooks/useJsonSchema";
 import { ErrorMessage } from "./ErrorMessage";
 import {
   useRef,
@@ -34,7 +37,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useSelectedModel } from "@/hooks/useSelectedModel";
 import { useDraft } from "@/contexts/DraftContext";
 
-export type ThinkingLevel = "low" | "medium" | "high";
+export type ThinkingLevel = "off" | "low" | "medium" | "high" | "max";
 
 interface FileAttachment {
   filename: string;
@@ -99,6 +102,7 @@ function ChatForm({
     attachments: [],
     fileErrors: [],
   });
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const compositionEndTimeoutRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,14 +153,22 @@ function ChatForm({
   };
 
   const {
-    settings: {
-      webSearchEnabled,
-      thinkEnabled,
-      thinkLevel: settingsThinkLevel,
-    },
+    settings,
     setSettings,
   } = useSettings();
+  const {
+    webSearchEnabled,
+    thinkEnabled,
+    thinkLevel: settingsThinkLevel,
+  } = settings;
   const { cloudDisabled } = useCloudStatus();
+  const systemMessage = (settings as any)?.systemMessage ?? "";
+  const {
+    active: schemaActive,
+    schema: jsonSchema,
+    toggle: toggleSchema,
+    setSchema: setJsonSchema,
+  } = useJsonSchema();
 
   const supportsWebSearch = useHasToolsCapability(selectedModel?.model);
   // Use per-chat thinking level instead of global
@@ -492,7 +504,7 @@ function ChatForm({
   }, [isStreaming, editingMessage, onCancelEdit, navigateToNextElement]);
 
   const handleSubmit = async () => {
-    if (!message.content.trim() || isStreaming || isDownloading) return;
+    if (!message.content.trim() || isDownloading) return;
 
     if (cloudDisabled && selectedModel?.isCloud()) {
       return;
@@ -500,6 +512,17 @@ function ChatForm({
 
     // Check if cloud mode is enabled but user is not authenticated
     if (shouldShowLoginBanner) {
+      return;
+    }
+
+    // If currently streaming, queue the message instead of sending immediately.
+    // The pending message is drained automatically when streaming completes.
+    if (isStreaming) {
+      setPendingMessage(message.content);
+      setMessage({ content: "", attachments: [], fileErrors: [] });
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
       return;
     }
 
@@ -518,10 +541,15 @@ function ChatForm({
     const useWebSearch =
       supportsWebSearch && webSearchEnabled && !cloudDisabled;
     const useThink = modelSupportsThinkingLevels
-      ? thinkLevel
+      ? thinkLevel === "off"
+        ? false
+        : thinkLevel
       : supportsThinkToggling
         ? thinkEnabled
         : undefined;
+    const useFormat =
+      schemaActive && jsonSchema ? jsonSchema : undefined;
+    const useSystemMessage = systemMessage || undefined;
 
     if (onSubmit) {
       onSubmit(message.content, {
@@ -536,6 +564,8 @@ function ChatForm({
         attachments: attachmentsToSend,
         webSearch: useWebSearch,
         think: useThink,
+        format: useFormat,
+        systemMessage: useSystemMessage,
         onChatEvent: (event) => {
           if (event.eventName === "chat_created" && event.chatId) {
             navigate({
@@ -566,11 +596,31 @@ function ChatForm({
     }, 100);
   };
 
+  // Keep a ref to the latest handleSubmit so the drain effect below can
+  // invoke it without stale closures.
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  // Auto-send the queued (pending) message once streaming completes.
+  // When streaming transitions from active to inactive and a pending message
+  // exists, submit it automatically.
+  useEffect(() => {
+    if (!isStreaming && pendingMessage && !isDownloading) {
+      const queued = pendingMessage;
+      setPendingMessage(null);
+      setMessage({ content: queued, attachments: [], fileErrors: [] });
+      // Submit on next tick so the state update is applied first.
+      setTimeout(() => {
+        handleSubmitRef.current();
+      }, 0);
+    }
+  }, [isStreaming, pendingMessage, isDownloading]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Enter to submit
     if (e.key === "Enter" && !e.shiftKey && !isEditing) {
       e.preventDefault();
-      if (!isStreaming && !isDownloading) {
+      if (!isDownloading) {
         handleSubmit();
       }
       return;
@@ -840,6 +890,21 @@ function ChatForm({
           </div>
         )}
 
+        {pendingMessage && (
+          <div className="px-3 py-2 mb-2 mx-5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-sm text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-between">
+              <span className="truncate">Queued: {pendingMessage}</span>
+              <button
+                onClick={() => setPendingMessage(null)}
+                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 ml-2 flex-shrink-0"
+                aria-label="Cancel queued message"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="relative w-full px-5">
           <textarea
             ref={textareaRef}
@@ -925,6 +990,22 @@ function ChatForm({
                     }
                     setSettings({ WebSearchEnabled: enable });
                   }}
+                />
+                {/* System Prompt Button */}
+                <SystemPromptButton
+                  isVisible={true}
+                  systemMessage={systemMessage}
+                  onSystemMessageChange={(msg: string) =>
+                    setSettings({ SystemMessage: msg } as any)
+                  }
+                />
+                {/* JSON Schema Button */}
+                <SchemaButton
+                  isVisible={true}
+                  isActive={schemaActive}
+                  schema={jsonSchema}
+                  onSchemaChange={setJsonSchema}
+                  onToggle={toggleSchema}
                 />
               </div>
             </div>

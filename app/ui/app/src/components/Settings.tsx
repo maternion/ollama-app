@@ -223,6 +223,16 @@ export default function Settings() {
         AskForTitleConfirmation: false,
         McpServers: "",
         PdfMode: "text",
+        SystemMessage: "",
+        ShowSystemMessage: false,
+        Temperature: 0.8,
+        TopK: 40,
+        TopP: 0.9,
+        MinP: 0,
+        RepeatPenalty: 1.0,
+        PresencePenalty: 0,
+        FrequencyPenalty: 0,
+        ShowModelLoadStatus: false,
       });
       updateSettingsMutation.mutate(defaultSettings);
     }
@@ -649,6 +659,22 @@ export default function Settings() {
                   </div>
                 </div>
               </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Show model load status</Label>
+                      <Description>Display which models are currently loaded in memory in the model picker.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.ShowModelLoadStatus || false}
+                      onChange={(checked) => handleChange("ShowModelLoadStatus" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
             </div>
           </div>
 
@@ -782,6 +808,184 @@ export default function Settings() {
                   placeholder='[{"id":"example","name":"Example","url":"https://example.com/mcp","enabled":false}]'
                 />
                 <Description>JSON array of MCP server configurations. Format: id, name, url, enabled, description.</Description>
+              </Field>
+            </div>
+          </div>
+
+          {/* Sampling Parameters */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>Sampling Parameters</Label>
+                <Description>Control how the model generates responses. Leave at defaults for standard behavior.</Description>
+              </Field>
+
+              {/* Temperature */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Temperature: {((settings as any)?.Temperature ?? 0.8).toFixed(1)}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.Temperature ?? 0.8}
+                  onChange={(value) => handleChange("Temperature" as any, value)}
+                  options={[
+                    { value: 0, label: "0" },
+                    { value: 0.2, label: "0.2" },
+                    { value: 0.4, label: "0.4" },
+                    { value: 0.6, label: "0.6" },
+                    { value: 0.8, label: "0.8" },
+                    { value: 1.0, label: "1.0" },
+                    { value: 1.2, label: "1.2" },
+                    { value: 1.5, label: "1.5" },
+                    { value: 2.0, label: "2.0" },
+                  ]}
+                />
+              </Field>
+
+              {/* Top P */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Top P: {((settings as any)?.TopP ?? 0.9).toFixed(1)}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.TopP ?? 0.9}
+                  onChange={(value) => handleChange("TopP" as any, value)}
+                  options={[
+                    { value: 0.1, label: "0.1" },
+                    { value: 0.3, label: "0.3" },
+                    { value: 0.5, label: "0.5" },
+                    { value: 0.7, label: "0.7" },
+                    { value: 0.9, label: "0.9" },
+                    { value: 1.0, label: "1.0" },
+                  ]}
+                />
+              </Field>
+
+              {/* Top K */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Top K: {(settings as any)?.TopK ?? 40}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.TopK ?? 40}
+                  onChange={(value) => handleChange("TopK" as any, value)}
+                  options={[
+                    { value: 1, label: "1" },
+                    { value: 10, label: "10" },
+                    { value: 20, label: "20" },
+                    { value: 40, label: "40" },
+                    { value: 60, label: "60" },
+                    { value: 80, label: "80" },
+                    { value: 100, label: "100" },
+                  ]}
+                />
+              </Field>
+
+              {/* Min P */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Min P: {((settings as any)?.MinP ?? 0).toFixed(1)}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.MinP ?? 0}
+                  onChange={(value) => handleChange("MinP" as any, value)}
+                  options={[
+                    { value: 0, label: "0" },
+                    { value: 0.05, label: "0.05" },
+                    { value: 0.1, label: "0.1" },
+                    { value: 0.2, label: "0.2" },
+                    { value: 0.3, label: "0.3" },
+                    { value: 0.5, label: "0.5" },
+                  ]}
+                />
+              </Field>
+
+              {/* Repeat Penalty */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Repeat Penalty: {((settings as any)?.RepeatPenalty ?? 1.0).toFixed(1)}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.RepeatPenalty ?? 1.0}
+                  onChange={(value) => handleChange("RepeatPenalty" as any, value)}
+                  options={[
+                    { value: 0.8, label: "0.8" },
+                    { value: 0.9, label: "0.9" },
+                    { value: 1.0, label: "1.0" },
+                    { value: 1.1, label: "1.1" },
+                    { value: 1.2, label: "1.2" },
+                    { value: 1.3, label: "1.3" },
+                    { value: 1.5, label: "1.5" },
+                  ]}
+                />
+              </Field>
+
+              {/* Presence Penalty */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Presence Penalty: {((settings as any)?.PresencePenalty ?? 0).toFixed(1)}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.PresencePenalty ?? 0}
+                  onChange={(value) => handleChange("PresencePenalty" as any, value)}
+                  options={[
+                    { value: 0, label: "0" },
+                    { value: 0.5, label: "0.5" },
+                    { value: 1.0, label: "1.0" },
+                    { value: 1.5, label: "1.5" },
+                    { value: 2.0, label: "2.0" },
+                  ]}
+                />
+              </Field>
+
+              {/* Frequency Penalty */}
+              <Field>
+                <div className="flex items-center justify-between">
+                  <Label>Frequency Penalty: {((settings as any)?.FrequencyPenalty ?? 0).toFixed(1)}</Label>
+                </div>
+                <Slider
+                  value={(settings as any)?.FrequencyPenalty ?? 0}
+                  onChange={(value) => handleChange("FrequencyPenalty" as any, value)}
+                  options={[
+                    { value: 0, label: "0" },
+                    { value: 0.5, label: "0.5" },
+                    { value: 1.0, label: "1.0" },
+                    { value: 1.5, label: "1.5" },
+                    { value: 2.0, label: "2.0" },
+                  ]}
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* System Prompt */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>System Prompt</Label>
+                <Description>Default system prompt prepended to all new conversations.</Description>
+                <textarea
+                  value={(settings as any)?.SystemMessage || ""}
+                  onChange={(e) => handleChange("SystemMessage" as any, e.target.value)}
+                  className="mt-2 w-full h-20 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm text-neutral-900 dark:text-neutral-100"
+                  placeholder="You are a helpful assistant..."
+                />
+              </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Show system messages</Label>
+                      <Description>Display system messages in the conversation view.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.ShowSystemMessage || false}
+                      onChange={(checked) => handleChange("ShowSystemMessage" as any, checked)}
+                    />
+                  </div>
+                </div>
               </Field>
             </div>
           </div>

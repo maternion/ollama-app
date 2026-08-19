@@ -14,7 +14,7 @@ import (
 
 // currentSchemaVersion defines the current database schema version.
 // Increment this when making schema changes that require migrations.
-const currentSchemaVersion = 18
+const currentSchemaVersion = 19
 
 // database wraps the SQLite connection.
 // SQLite handles its own locking for concurrent access:
@@ -99,6 +99,16 @@ func (db *database) init() error {
 		ask_for_title_confirmation BOOLEAN NOT NULL DEFAULT 0,
 		mcp_servers TEXT NOT NULL DEFAULT '',
 		pdf_mode TEXT NOT NULL DEFAULT 'text',
+		system_message TEXT NOT NULL DEFAULT '',
+		show_system_message BOOLEAN NOT NULL DEFAULT 0,
+		temperature REAL NOT NULL DEFAULT 0.8,
+		top_k INTEGER NOT NULL DEFAULT 40,
+		top_p REAL NOT NULL DEFAULT 0.9,
+		min_p REAL NOT NULL DEFAULT 0.0,
+		repeat_penalty REAL NOT NULL DEFAULT 1.0,
+		presence_penalty REAL NOT NULL DEFAULT 0.0,
+		frequency_penalty REAL NOT NULL DEFAULT 0.0,
+		show_model_load_status BOOLEAN NOT NULL DEFAULT 0,
 		schema_version INTEGER NOT NULL DEFAULT %d
 	);
 
@@ -295,6 +305,11 @@ func (db *database) migrate() error {
 				return fmt.Errorf("migrate v17 to v18: %w", err)
 			}
 			version = 18
+		case 18:
+			if err := db.migrateV18ToV19(); err != nil {
+				return fmt.Errorf("migrate v18 to v19: %w", err)
+			}
+			version = 19
 		default:
 			// If we have a version we don't recognize, just set it to current
 			// This might happen during development
@@ -654,6 +669,66 @@ func (db *database) migrateV17ToV18() error {
 	}
 
 	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 18`)
+	if err != nil {
+		return fmt.Errorf("update schema version: %w", err)
+	}
+
+	return nil
+}
+
+// migrateV18ToV19 adds system message, sampling parameters, and model load status columns to the settings table
+func (db *database) migrateV18ToV19() error {
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN system_message TEXT NOT NULL DEFAULT '';`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add system_message column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_system_message BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add show_system_message column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN temperature REAL NOT NULL DEFAULT 0.8;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add temperature column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN top_k INTEGER NOT NULL DEFAULT 40;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add top_k column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN top_p REAL NOT NULL DEFAULT 0.9;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add top_p column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN min_p REAL NOT NULL DEFAULT 0.0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add min_p column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN repeat_penalty REAL NOT NULL DEFAULT 1.0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add repeat_penalty column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN presence_penalty REAL NOT NULL DEFAULT 0.0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add presence_penalty column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN frequency_penalty REAL NOT NULL DEFAULT 0.0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add frequency_penalty column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_model_load_status BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add show_model_load_status column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 19`)
 	if err != nil {
 		return fmt.Errorf("update schema version: %w", err)
 	}
@@ -1337,9 +1412,9 @@ func (db *database) getSettings() (Settings, error) {
 	var s Settings
 
 	err := db.conn.QueryRow(`
-		SELECT expose, survey, browser, models, agent, tools, working_dir, context_length, turbo_enabled, websearch_enabled, selected_model, sidebar_open, last_home_view, think_enabled, think_level, auto_update_enabled, custom_css, show_raw_output, api_key, show_model_quantization, show_model_tags, title_generation_use_llm, title_generation_use_first_line, title_generation_prompt, ask_for_title_confirmation, mcp_servers, pdf_mode
+		SELECT expose, survey, browser, models, agent, tools, working_dir, context_length, turbo_enabled, websearch_enabled, selected_model, sidebar_open, last_home_view, think_enabled, think_level, auto_update_enabled, custom_css, show_raw_output, api_key, show_model_quantization, show_model_tags, title_generation_use_llm, title_generation_use_first_line, title_generation_prompt, ask_for_title_confirmation, mcp_servers, pdf_mode, system_message, show_system_message, temperature, top_k, top_p, min_p, repeat_penalty, presence_penalty, frequency_penalty, show_model_load_status
 		FROM settings
-	`).Scan(&s.Expose, &s.Survey, &s.Browser, &s.Models, &s.Agent, &s.Tools, &s.WorkingDir, &s.ContextLength, &s.TurboEnabled, &s.WebSearchEnabled, &s.SelectedModel, &s.SidebarOpen, &s.LastHomeView, &s.ThinkEnabled, &s.ThinkLevel, &s.AutoUpdateEnabled, &s.CustomCSS, &s.ShowRawOutput, &s.APIKey, &s.ShowModelQuantization, &s.ShowModelTags, &s.TitleGenerationUseLLM, &s.TitleGenerationUseFirstLine, &s.TitleGenerationPrompt, &s.AskForTitleConfirmation, &s.McpServers, &s.PdfMode)
+	`).Scan(&s.Expose, &s.Survey, &s.Browser, &s.Models, &s.Agent, &s.Tools, &s.WorkingDir, &s.ContextLength, &s.TurboEnabled, &s.WebSearchEnabled, &s.SelectedModel, &s.SidebarOpen, &s.LastHomeView, &s.ThinkEnabled, &s.ThinkLevel, &s.AutoUpdateEnabled, &s.CustomCSS, &s.ShowRawOutput, &s.APIKey, &s.ShowModelQuantization, &s.ShowModelTags, &s.TitleGenerationUseLLM, &s.TitleGenerationUseFirstLine, &s.TitleGenerationPrompt, &s.AskForTitleConfirmation, &s.McpServers, &s.PdfMode, &s.SystemMessage, &s.ShowSystemMessage, &s.Temperature, &s.TopK, &s.TopP, &s.MinP, &s.RepeatPenalty, &s.PresencePenalty, &s.FrequencyPenalty, &s.ShowModelLoadStatus)
 	if err != nil {
 		return Settings{}, fmt.Errorf("get settings: %w", err)
 	}
@@ -1369,8 +1444,8 @@ func (db *database) setSettings(s Settings) error {
 
 	_, err := db.conn.Exec(`
 		UPDATE settings
-		SET expose = ?, survey = ?, browser = ?, models = ?, agent = ?, tools = ?, working_dir = ?, context_length = ?, turbo_enabled = ?, websearch_enabled = ?, selected_model = ?, sidebar_open = ?, last_home_view = ?, think_enabled = ?, think_level = ?, auto_update_enabled = ?, custom_css = ?, show_raw_output = ?, api_key = ?, show_model_quantization = ?, show_model_tags = ?, title_generation_use_llm = ?, title_generation_use_first_line = ?, title_generation_prompt = ?, ask_for_title_confirmation = ?, mcp_servers = ?, pdf_mode = ?
-	`, s.Expose, s.Survey, s.Browser, s.Models, s.Agent, s.Tools, s.WorkingDir, s.ContextLength, s.TurboEnabled, s.WebSearchEnabled, s.SelectedModel, s.SidebarOpen, lastHomeView, s.ThinkEnabled, s.ThinkLevel, s.AutoUpdateEnabled, s.CustomCSS, s.ShowRawOutput, s.APIKey, s.ShowModelQuantization, s.ShowModelTags, s.TitleGenerationUseLLM, s.TitleGenerationUseFirstLine, s.TitleGenerationPrompt, s.AskForTitleConfirmation, s.McpServers, s.PdfMode)
+		SET expose = ?, survey = ?, browser = ?, models = ?, agent = ?, tools = ?, working_dir = ?, context_length = ?, turbo_enabled = ?, websearch_enabled = ?, selected_model = ?, sidebar_open = ?, last_home_view = ?, think_enabled = ?, think_level = ?, auto_update_enabled = ?, custom_css = ?, show_raw_output = ?, api_key = ?, show_model_quantization = ?, show_model_tags = ?, title_generation_use_llm = ?, title_generation_use_first_line = ?, title_generation_prompt = ?, ask_for_title_confirmation = ?, mcp_servers = ?, pdf_mode = ?, system_message = ?, show_system_message = ?, temperature = ?, top_k = ?, top_p = ?, min_p = ?, repeat_penalty = ?, presence_penalty = ?, frequency_penalty = ?, show_model_load_status = ?
+	`, s.Expose, s.Survey, s.Browser, s.Models, s.Agent, s.Tools, s.WorkingDir, s.ContextLength, s.TurboEnabled, s.WebSearchEnabled, s.SelectedModel, s.SidebarOpen, lastHomeView, s.ThinkEnabled, s.ThinkLevel, s.AutoUpdateEnabled, s.CustomCSS, s.ShowRawOutput, s.APIKey, s.ShowModelQuantization, s.ShowModelTags, s.TitleGenerationUseLLM, s.TitleGenerationUseFirstLine, s.TitleGenerationPrompt, s.AskForTitleConfirmation, s.McpServers, s.PdfMode, s.SystemMessage, s.ShowSystemMessage, s.Temperature, s.TopK, s.TopP, s.MinP, s.RepeatPenalty, s.PresencePenalty, s.FrequencyPenalty, s.ShowModelLoadStatus)
 	if err != nil {
 		return fmt.Errorf("set settings: %w", err)
 	}

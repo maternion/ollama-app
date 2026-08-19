@@ -5,6 +5,7 @@ import { ImageThumbnail } from "./ImageThumbnail";
 import { isImageFile } from "@/utils/imageUtils";
 import CopyButton from "./CopyButton";
 import { useSettings } from "@/hooks/useSettings";
+import { SystemMessage } from "@/components/SystemMessage";
 import React, { useState, useMemo, useRef } from "react";
 
 const Message = React.memo(
@@ -26,6 +27,15 @@ const Message = React.memo(
     browserToolResult?: BrowserToolResult;
     lastToolQuery?: string;
   }) => {
+    const { settings: displaySettings } = useSettings();
+    const showSystemMessage =
+      (displaySettings as any)?.showSystemMessage ?? false;
+
+    if (message.role === "system") {
+      if (!showSystemMessage) return null;
+      return <SystemMessage message={message} />;
+    }
+
     if (message.role === "user") {
       return (
         <UserMessage

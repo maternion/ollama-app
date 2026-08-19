@@ -328,6 +328,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/me", ollamaProxy)
 	mux.Handle("POST /api/signout", ollamaProxy)
 	mux.Handle("GET /api/experimental/model-recommendations", ollamaProxy)
+	mux.Handle("GET /api/ps", ollamaProxy)
 
 	// React app - catch all non-API routes and serve the React app
 	mux.Handle("GET /", s.appHandler())
@@ -986,7 +987,11 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 				reqChat = &temp
 			}
 		}
-		chatReq, err := s.buildChatRequest(reqChat, req.Model, thinkValue, availableTools)
+		settings, err := s.Store.Settings()
+		if err != nil {
+			s.log().Error("failed to load settings for chat request", "error", err)
+		}
+		chatReq, err := s.buildChatRequest(reqChat, req.Model, thinkValue, availableTools, &settings, req.Format, req.SystemMessage)
 		if err != nil {
 			return err
 		}
@@ -2042,7 +2047,7 @@ func supportsBrowserTools(model string) bool {
 }
 
 // buildChatRequest converts store.Chat to api.ChatRequest
-func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, availableTools []map[string]any) (*api.ChatRequest, error) {
+func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, availableTools []map[string]any, settings *store.Settings, reqFormat json.RawMessage, systemMessage string) (*api.ChatRequest, error) {
 	var msgs []api.Message
 	for _, m := range chat.Messages {
 		// Skip empty messages if present
@@ -2113,7 +2118,11 @@ func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, ava
 				thinkValue = &api.ThinkValue{Value: boolValue}
 			}
 		} else if stringValue, ok := think.(string); ok {
-			if stringValue != "" && stringValue != "none" {
+			if stringValue == "off" || stringValue == "none" || stringValue == "" {
+				// Don't set think - leave nil
+			} else if stringValue == "max" {
+				thinkValue = &api.ThinkValue{Value: "max"}
+			} else {
 				thinkValue = &api.ThinkValue{Value: stringValue}
 			}
 		}
@@ -2132,6 +2141,56 @@ func (s *Server) buildChatRequest(chat *store.Chat, model string, think any, ava
 			tools[i] = convertToOllamaTool(toolSchema)
 		}
 		req.Tools = tools
+	}
+
+	// Apply sampling parameters from settings if any are non-default
+	if settings != nil {
+		opts := map[string]any{}
+		if settings.Temperature != 0.8 {
+			opts["temperature"] = settings.Temperature
+		}
+		if settings.TopK != 40 {
+			opts["top_k"] = settings.TopK
+		}
+		if settings.TopP != 0.9 {
+			opts["top_p"] = settings.TopP
+		}
+		if settings.MinP != 0.0 {
+			opts["min_p"] = settings.MinP
+		}
+		if settings.RepeatPenalty != 1.0 {
+			opts["repeat_penalty"] = settings.RepeatPenalty
+		}
+		if settings.PresencePenalty != 0.0 {
+			opts["presence_penalty"] = settings.PresencePenalty
+		}
+		if settings.FrequencyPenalty != 0.0 {
+			opts["frequency_penalty"] = settings.FrequencyPenalty
+		}
+		if len(opts) > 0 {
+			req.Options = opts
+		}
+	}
+
+	// Apply format (JSON schema constrained generation) if provided
+	if len(reqFormat) > 0 {
+		req.Format = reqFormat
+	}
+
+	// Prepend system message if provided and not already in messages
+	if systemMessage != "" {
+		hasSystem := false
+		for _, m := range msgs {
+			if m.Role == "system" {
+				hasSystem = true
+				break
+			}
+		}
+		if !hasSystem {
+			systemMsg := api.Message{Role: "system", Content: systemMessage}
+			msgs = append([]api.Message{systemMsg}, msgs...)
+			req.Messages = msgs
+		}
 	}
 
 	return req, nil

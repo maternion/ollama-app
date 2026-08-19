@@ -2,15 +2,19 @@ import { forwardRef, useState, useRef, useEffect } from "react";
 import type { ThinkingLevel } from "./ChatForm";
 
 const THINKING_LEVELS = {
+  OFF: "off",
   LOW: "low",
   MEDIUM: "medium",
   HIGH: "high",
+  MAX: "max",
 } as const;
 
 const THINKING_LEVEL_LABELS = {
+  off: "Off",
   low: "Low",
   medium: "Medium",
   high: "High",
+  max: "Max",
 } as const;
 
 interface ThinkButtonProps {

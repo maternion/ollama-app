@@ -208,6 +208,24 @@ type Settings struct {
 
 	// PdfMode controls how PDFs are processed: "text" (default) or "images"
 	PdfMode string
+
+	// SystemMessage stores a global default system prompt to prepend to conversations
+	SystemMessage string
+
+	// ShowSystemMessage controls whether system messages are rendered in the chat UI
+	ShowSystemMessage bool
+
+	// Sampling parameters
+	Temperature      float32
+	TopK             int
+	TopP             float32
+	MinP             float32
+	RepeatPenalty    float32
+	PresencePenalty  float32
+	FrequencyPenalty float32
+
+	// ShowModelLoadStatus shows loaded/unloaded status dots in the model picker
+	ShowModelLoadStatus bool
 }
 
 // DefaultModelsDir returns the default models directory for the app.

@@ -463,6 +463,16 @@ export class Settings {
     AskForTitleConfirmation: boolean;
     McpServers: string;
     PdfMode: string;
+    SystemMessage: string;
+    ShowSystemMessage: boolean;
+    Temperature: number;
+    TopK: number;
+    TopP: number;
+    MinP: number;
+    RepeatPenalty: number;
+    PresencePenalty: number;
+    FrequencyPenalty: number;
+    ShowModelLoadStatus: boolean;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -493,6 +503,16 @@ export class Settings {
         this.AskForTitleConfirmation = source["AskForTitleConfirmation"];
         this.McpServers = source["McpServers"];
         this.PdfMode = source["PdfMode"];
+        this.SystemMessage = source["SystemMessage"];
+        this.ShowSystemMessage = source["ShowSystemMessage"];
+        this.Temperature = source["Temperature"];
+        this.TopK = source["TopK"];
+        this.TopP = source["TopP"];
+        this.MinP = source["MinP"];
+        this.RepeatPenalty = source["RepeatPenalty"];
+        this.PresencePenalty = source["PresencePenalty"];
+        this.FrequencyPenalty = source["FrequencyPenalty"];
+        this.ShowModelLoadStatus = source["ShowModelLoadStatus"];
     }
 }
 export class SettingsResponse {
@@ -570,6 +590,8 @@ export class ChatRequest {
     file_tools?: boolean;
     forceUpdate?: boolean;
     think?: any;
+    format?: number[];
+    system_message?: string;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -581,6 +603,8 @@ export class ChatRequest {
         this.file_tools = source["file_tools"];
         this.forceUpdate = source["forceUpdate"];
         this.think = source["think"];
+        this.format = source["format"];
+        this.system_message = source["system_message"];
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {

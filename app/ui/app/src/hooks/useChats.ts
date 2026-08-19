@@ -206,6 +206,8 @@ export const useSendMessage = (chatId: string) => {
     setLoadingChats,
     setAbortControllers,
     setDownloadProgress,
+    pendingMessages,
+    setPendingMessages,
   } = useStreamingContext();
 
   const cleanupStreaming = (id: string) => {
@@ -243,6 +245,8 @@ export const useSendMessage = (chatId: string) => {
       fileTools,
       forceUpdate,
       think,
+      format,
+      systemMessage,
       onChatEvent,
     }: {
       message: string;
@@ -252,6 +256,8 @@ export const useSendMessage = (chatId: string) => {
       fileTools?: boolean;
       forceUpdate?: boolean;
       think?: boolean | string;
+      format?: string;
+      systemMessage?: string;
       onChatEvent?: (event: ChatEventUnion) => void;
     }) => {
       // For existing chats, set streaming state and add optimistic user message
@@ -328,6 +334,8 @@ export const useSendMessage = (chatId: string) => {
         fileTools,
         forceUpdate,
         think,
+        format,
+        systemMessage,
       );
       let currentChatId = chatId;
       let isCancelled = false;
@@ -710,6 +718,18 @@ export const useSendMessage = (chatId: string) => {
                   return { ...old, chat: new Chat({ ...old.chat, messages: msgs }) };
                 },
               );
+            }
+
+            // Drain a queued/pending message for this chat, if any.
+            // The pending message is cleared here; the ChatForm re-sends it
+            // by watching for the transition out of streaming.
+            const pending = pendingMessages.get(currentChatId);
+            if (pending) {
+              setPendingMessages((prev) => {
+                const next = new Map(prev);
+                next.delete(currentChatId);
+                return next;
+              });
             }
             break;
           case "stats": {

@@ -3,6 +3,7 @@
 package responses
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/ollama/ollama/api"
@@ -125,14 +126,16 @@ type Attachment struct {
 }
 
 type ChatRequest struct {
-	Model       string       `json:"model"`
-	Prompt      string       `json:"prompt"`
-	Index       *int         `json:"index,omitempty"`
-	Attachments []Attachment `json:"attachments,omitempty"`
-	WebSearch   *bool        `json:"web_search,omitempty"`
-	FileTools   *bool        `json:"file_tools,omitempty"`
-	ForceUpdate bool         `json:"forceUpdate,omitempty"`
-	Think       any          `json:"think,omitempty"`
+	Model        string          `json:"model"`
+	Prompt       string          `json:"prompt"`
+	Index        *int            `json:"index,omitempty"`
+	Attachments  []Attachment    `json:"attachments,omitempty"`
+	WebSearch    *bool           `json:"web_search,omitempty"`
+	FileTools    *bool           `json:"file_tools,omitempty"`
+	ForceUpdate  bool            `json:"forceUpdate,omitempty"`
+	Think        any             `json:"think,omitempty"`
+	Format       json.RawMessage `json:"format,omitempty"`
+	SystemMessage string        `json:"system_message,omitempty"`
 }
 
 type Error struct {

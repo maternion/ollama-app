@@ -14,6 +14,7 @@ import { getModelUpstreamInfo } from "@/api";
 import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import { ModelTag } from "@/components/ModelTag";
 import { useSettings } from "@/hooks/useSettings";
+import { useRunningModels } from "@/hooks/useRunningModels";
 
 const stalenessCheckCache = new Map<string, number>();
 
@@ -234,6 +235,12 @@ export const ModelList = forwardRef(function ModelList(
   const { settings: displaySettings } = useSettings();
   const showQuant = (displaySettings as any)?.showModelQuantization ?? false;
   const showTags = (displaySettings as any)?.showModelTags ?? false;
+  const showLoadStatus =
+    (displaySettings as any)?.showModelLoadStatus ?? false;
+  const { data: runningData } = useRunningModels();
+  const loadedModelNames = new Set(
+    (runningData?.models || []).map((m: any) => m.name),
+  );
 
   useImperativeHandle(ref, () => ({
     scrollToSelectedModel: () => {
@@ -334,6 +341,21 @@ export const ModelList = forwardRef(function ModelList(
                       <ModelTag label={(model as any).details.parameter_size} variant="size" />
                     )}
                   </div>
+                )}
+                {showLoadStatus && (
+                  <span
+                    className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                      loadedModelNames.has(model.model) ||
+                      loadedModelNames.has(model.model + ":latest")
+                        ? "bg-green-500"
+                        : "bg-neutral-300 dark:bg-neutral-600"
+                    }`}
+                    title={
+                      loadedModelNames.has(model.model)
+                        ? "Loaded in memory"
+                        : "Not loaded"
+                    }
+                  />
                 )}
                 {model.isCloud() && (
                   <svg

@@ -20,6 +20,9 @@ interface SettingsState {
   titleGenerationPrompt: string;
   askForTitleConfirmation: boolean;
   pdfMode: string;
+  systemMessage: string;
+  showSystemMessage: boolean;
+  showModelLoadStatus: boolean;
 }
 
 // Type for partial settings updates
@@ -42,6 +45,16 @@ type SettingsUpdate = Partial<{
   CustomCSS: string;
   APIKey: string;
   McpServers: string;
+  SystemMessage: string;
+  ShowSystemMessage: boolean;
+  ShowModelLoadStatus: boolean;
+  Temperature: number;
+  TopK: number;
+  TopP: number;
+  MinP: number;
+  RepeatPenalty: number;
+  PresencePenalty: number;
+  FrequencyPenalty: number;
 }>;
 
 export function useSettings() {
@@ -85,6 +98,10 @@ export function useSettings() {
       askForTitleConfirmation:
         (settingsData?.settings as any)?.AskForTitleConfirmation ?? false,
       pdfMode: (settingsData?.settings as any)?.PdfMode ?? "text",
+      systemMessage: (settingsData?.settings as any)?.SystemMessage ?? "",
+      showSystemMessage: (settingsData?.settings as any)?.ShowSystemMessage ?? false,
+      showModelLoadStatus:
+        (settingsData?.settings as any)?.ShowModelLoadStatus ?? false,
     }),
     [settingsData?.settings],
   );
