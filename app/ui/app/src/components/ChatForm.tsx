@@ -970,7 +970,7 @@ function ChatForm({
               schema={jsonSchema}
               onSchemaChange={setJsonSchema}
               onSchemaToggle={toggleSchema}
-              onFileAttach={() => fileInputRef.current?.click()}
+              onFileAttach={handleFilesReceived}
               hasVisionCapability={hasVisionCapability}
               hasAudioCapability={hasAudioCapability}
             />
