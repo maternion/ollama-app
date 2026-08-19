@@ -14,7 +14,7 @@ import (
 
 // currentSchemaVersion defines the current database schema version.
 // Increment this when making schema changes that require migrations.
-const currentSchemaVersion = 17
+const currentSchemaVersion = 18
 
 // database wraps the SQLite connection.
 // SQLite handles its own locking for concurrent access:
@@ -88,6 +88,17 @@ func (db *database) init() error {
 		cloud_setting_migrated BOOLEAN NOT NULL DEFAULT 0,
 		remote TEXT NOT NULL DEFAULT '', -- deprecated
 		auto_update_enabled BOOLEAN NOT NULL DEFAULT 1,
+		custom_css TEXT NOT NULL DEFAULT '',
+		show_raw_output BOOLEAN NOT NULL DEFAULT 0,
+		api_key TEXT NOT NULL DEFAULT '',
+		show_model_quantization BOOLEAN NOT NULL DEFAULT 0,
+		show_model_tags BOOLEAN NOT NULL DEFAULT 0,
+		title_generation_use_llm BOOLEAN NOT NULL DEFAULT 0,
+		title_generation_use_first_line BOOLEAN NOT NULL DEFAULT 0,
+		title_generation_prompt TEXT NOT NULL DEFAULT '',
+		ask_for_title_confirmation BOOLEAN NOT NULL DEFAULT 0,
+		mcp_servers TEXT NOT NULL DEFAULT '',
+		pdf_mode TEXT NOT NULL DEFAULT 'text',
 		schema_version INTEGER NOT NULL DEFAULT %d
 	);
 
@@ -279,6 +290,11 @@ func (db *database) migrate() error {
 				return fmt.Errorf("migrate v16 to v17: %w", err)
 			}
 			version = 17
+		case 17:
+			if err := db.migrateV17ToV18(); err != nil {
+				return fmt.Errorf("migrate v17 to v18: %w", err)
+			}
+			version = 18
 		default:
 			// If we have a version we don't recognize, just set it to current
 			// This might happen during development
@@ -566,6 +582,78 @@ func (db *database) migrateV16ToV17() error {
 	}
 
 	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 17`)
+	if err != nil {
+		return fmt.Errorf("update schema version: %w", err)
+	}
+
+	return nil
+}
+
+// migrateV17ToV18 adds custom CSS, raw output, API key, model display, title generation, MCP servers, and PDF mode columns to the settings table
+func (db *database) migrateV17ToV18() error {
+	// Custom CSS
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN custom_css TEXT NOT NULL DEFAULT '';`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add custom_css column: %w", err)
+	}
+
+	// Show raw output toggle
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_raw_output BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add show_raw_output column: %w", err)
+	}
+
+	// API key
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN api_key TEXT NOT NULL DEFAULT '';`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add api_key column: %w", err)
+	}
+
+	// Model display settings
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_model_quantization BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add show_model_quantization column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_model_tags BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add show_model_tags column: %w", err)
+	}
+
+	// Title generation settings
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN title_generation_use_llm BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add title_generation_use_llm column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN title_generation_use_first_line BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add title_generation_use_first_line column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN title_generation_prompt TEXT NOT NULL DEFAULT '';`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add title_generation_prompt column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN ask_for_title_confirmation BOOLEAN NOT NULL DEFAULT 0;`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add ask_for_title_confirmation column: %w", err)
+	}
+
+	// MCP servers config
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN mcp_servers TEXT NOT NULL DEFAULT '';`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add mcp_servers column: %w", err)
+	}
+
+	// PDF mode
+	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN pdf_mode TEXT NOT NULL DEFAULT 'text';`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add pdf_mode column: %w", err)
+	}
+
+	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 18`)
 	if err != nil {
 		return fmt.Errorf("update schema version: %w", err)
 	}
@@ -1249,9 +1337,9 @@ func (db *database) getSettings() (Settings, error) {
 	var s Settings
 
 	err := db.conn.QueryRow(`
-		SELECT expose, survey, browser, models, agent, tools, working_dir, context_length, turbo_enabled, websearch_enabled, selected_model, sidebar_open, last_home_view, think_enabled, think_level, auto_update_enabled
+		SELECT expose, survey, browser, models, agent, tools, working_dir, context_length, turbo_enabled, websearch_enabled, selected_model, sidebar_open, last_home_view, think_enabled, think_level, auto_update_enabled, custom_css, show_raw_output, api_key, show_model_quantization, show_model_tags, title_generation_use_llm, title_generation_use_first_line, title_generation_prompt, ask_for_title_confirmation, mcp_servers, pdf_mode
 		FROM settings
-	`).Scan(&s.Expose, &s.Survey, &s.Browser, &s.Models, &s.Agent, &s.Tools, &s.WorkingDir, &s.ContextLength, &s.TurboEnabled, &s.WebSearchEnabled, &s.SelectedModel, &s.SidebarOpen, &s.LastHomeView, &s.ThinkEnabled, &s.ThinkLevel, &s.AutoUpdateEnabled)
+	`).Scan(&s.Expose, &s.Survey, &s.Browser, &s.Models, &s.Agent, &s.Tools, &s.WorkingDir, &s.ContextLength, &s.TurboEnabled, &s.WebSearchEnabled, &s.SelectedModel, &s.SidebarOpen, &s.LastHomeView, &s.ThinkEnabled, &s.ThinkLevel, &s.AutoUpdateEnabled, &s.CustomCSS, &s.ShowRawOutput, &s.APIKey, &s.ShowModelQuantization, &s.ShowModelTags, &s.TitleGenerationUseLLM, &s.TitleGenerationUseFirstLine, &s.TitleGenerationPrompt, &s.AskForTitleConfirmation, &s.McpServers, &s.PdfMode)
 	if err != nil {
 		return Settings{}, fmt.Errorf("get settings: %w", err)
 	}
@@ -1281,8 +1369,8 @@ func (db *database) setSettings(s Settings) error {
 
 	_, err := db.conn.Exec(`
 		UPDATE settings
-		SET expose = ?, survey = ?, browser = ?, models = ?, agent = ?, tools = ?, working_dir = ?, context_length = ?, turbo_enabled = ?, websearch_enabled = ?, selected_model = ?, sidebar_open = ?, last_home_view = ?, think_enabled = ?, think_level = ?, auto_update_enabled = ?
-	`, s.Expose, s.Survey, s.Browser, s.Models, s.Agent, s.Tools, s.WorkingDir, s.ContextLength, s.TurboEnabled, s.WebSearchEnabled, s.SelectedModel, s.SidebarOpen, lastHomeView, s.ThinkEnabled, s.ThinkLevel, s.AutoUpdateEnabled)
+		SET expose = ?, survey = ?, browser = ?, models = ?, agent = ?, tools = ?, working_dir = ?, context_length = ?, turbo_enabled = ?, websearch_enabled = ?, selected_model = ?, sidebar_open = ?, last_home_view = ?, think_enabled = ?, think_level = ?, auto_update_enabled = ?, custom_css = ?, show_raw_output = ?, api_key = ?, show_model_quantization = ?, show_model_tags = ?, title_generation_use_llm = ?, title_generation_use_first_line = ?, title_generation_prompt = ?, ask_for_title_confirmation = ?, mcp_servers = ?, pdf_mode = ?
+	`, s.Expose, s.Survey, s.Browser, s.Models, s.Agent, s.Tools, s.WorkingDir, s.ContextLength, s.TurboEnabled, s.WebSearchEnabled, s.SelectedModel, s.SidebarOpen, lastHomeView, s.ThinkEnabled, s.ThinkLevel, s.AutoUpdateEnabled, s.CustomCSS, s.ShowRawOutput, s.APIKey, s.ShowModelQuantization, s.ShowModelTags, s.TitleGenerationUseLLM, s.TitleGenerationUseFirstLine, s.TitleGenerationPrompt, s.AskForTitleConfirmation, s.McpServers, s.PdfMode)
 	if err != nil {
 		return fmt.Errorf("set settings: %w", err)
 	}

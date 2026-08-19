@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { processFiles } from "@/utils/fileValidation";
 import { useHasAudioCapability } from "@/hooks/useModelCapabilities";
+import { useSettings } from "@/hooks/useSettings";
 
 interface FileAttachmentMenuProps {
   onFilesReceived: (files: Array<{ filename: string; data: Uint8Array; type?: string }>, errors: Array<{ filename: string; error: string }>) => void;
@@ -12,6 +13,8 @@ export function FileAttachmentMenu({ onFilesReceived, hasVisionCapability, selec
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const hasAudioCapability = useHasAudioCapability(selectedModel);
+  const { settings: displaySettings } = useSettings();
+  const pdfMode = (displaySettings as any)?.pdfMode ?? "text";
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -136,6 +139,11 @@ export function FileAttachmentMenu({ onFilesReceived, hasVisionCapability, selec
               </svg>
               Audio
             </button>
+          )}
+          {pdfMode === "images" && (
+            <div className="px-3 py-1.5 text-xs text-neutral-400 dark:text-neutral-500 border-t border-neutral-100 dark:border-neutral-700">
+              PDFs: processing as images
+            </div>
           )}
         </div>
       )}

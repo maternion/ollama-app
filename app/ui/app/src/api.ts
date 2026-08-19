@@ -135,11 +135,14 @@ export async function getModels(query?: string): Promise<Model[]> {
         // Remove the latest tag from the returned model
         const modelName = m.name.replace(/:latest$/, "");
 
-        return new Model({
+        const model = new Model({
           model: modelName,
           digest: m.digest,
           modified_at: m.modified_at ? new Date(m.modified_at) : undefined,
         });
+        (model as any).details = (m as any).details;
+        (model as any).capabilities = (m as any).capabilities;
+        return model;
       });
 
     // Filter by query if provided

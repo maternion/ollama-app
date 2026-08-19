@@ -114,6 +114,7 @@ type Server struct {
 	Agent        bool
 	WorkingDir   string
 	Dev          bool
+	apiKey       string
 
 	Updater             *updater.Updater
 	UpdateAvailableFunc func()
@@ -178,6 +179,9 @@ func (s *Server) ollamaProxy() http.Handler {
 				newProxy.Director = func(req *http.Request) {
 					originalDirector(req)
 					req.Host = target.Host
+					if s.apiKey != "" {
+						req.Header.Set("Authorization", "Bearer "+s.apiKey)
+					}
 					s.log().Debug("proxying request", "method", req.Method, "path", req.URL.Path, "target", target.Host)
 				}
 
@@ -1355,6 +1359,76 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 		showNotification("Response ready", "Ollama has finished generating")
 	}
 
+	// Title generation after first response
+	if chat.Title == "" && len(chat.Messages) > 0 {
+		settings, err := s.Store.Settings()
+		if err == nil {
+			var title string
+
+			if settings.TitleGenerationUseFirstLine {
+				for _, msg := range chat.Messages {
+					if msg.Role == "user" && msg.Content != "" {
+						title = strings.SplitN(msg.Content, "\n", 2)[0]
+						break
+					}
+				}
+			}
+
+			if settings.TitleGenerationUseLLM && title == "" {
+				firstUserContent := ""
+				firstAssistantContent := ""
+				for _, msg := range chat.Messages {
+					if msg.Role == "user" && firstUserContent == "" {
+						firstUserContent = msg.Content
+					}
+					if msg.Role == "assistant" && firstAssistantContent == "" {
+						firstAssistantContent = msg.Content
+					}
+				}
+
+				if firstUserContent != "" {
+					prompt := settings.TitleGenerationPrompt
+					if prompt == "" {
+						prompt = "Generate a short, concise title (max 6 words) for this conversation. Reply with only the title, no quotes or punctuation.\n\nUser: " + firstUserContent
+					} else {
+						prompt = strings.ReplaceAll(prompt, "{{USER}}", firstUserContent)
+						prompt = strings.ReplaceAll(prompt, "{{ASSISTANT}}", firstAssistantContent)
+					}
+
+					titleReq := &api.ChatRequest{
+						Model:    req.Model,
+						Messages: []api.Message{{Role: "user", Content: prompt}},
+						Stream:   ptr(false),
+					}
+
+					titleCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+
+					err := c.Chat(titleCtx, titleReq, func(res api.ChatResponse) error {
+						if res.Done && res.Message.Content != "" {
+							title = strings.TrimSpace(res.Message.Content)
+							title = strings.Trim(title, "\"'")
+						}
+						return nil
+					})
+					if err != nil {
+						s.log().Debug("title generation failed", "error", err)
+					}
+				}
+			}
+
+			if title != "" {
+				if len(title) > 100 {
+					title = title[:100] + "..."
+				}
+				chat.Title = title
+				if err := s.Store.SetChat(*chat); err != nil {
+					s.log().Error("failed to save chat title", "error", err)
+				}
+			}
+		}
+	}
+
 	return s.Store.SetChat(*chat)
 }
 
@@ -1722,6 +1796,9 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) error {
 	if err := s.Store.SetSettings(settings); err != nil {
 		return fmt.Errorf("failed to save settings: %w", err)
 	}
+
+	// Update the server's API key for proxy injection
+	s.apiKey = settings.APIKey
 
 	// Handle auto-update toggle changes
 	if old.AutoUpdateEnabled != settings.AutoUpdateEnabled {

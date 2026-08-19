@@ -12,6 +12,8 @@ import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { getModelUpstreamInfo } from "@/api";
 import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ModelTag } from "@/components/ModelTag";
+import { useSettings } from "@/hooks/useSettings";
 
 const stalenessCheckCache = new Map<string, number>();
 
@@ -229,6 +231,9 @@ export const ModelList = forwardRef(function ModelList(
 ): JSX.Element {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const { settings: displaySettings } = useSettings();
+  const showQuant = (displaySettings as any)?.showModelQuantization ?? false;
+  const showTags = (displaySettings as any)?.showModelTags ?? false;
 
   useImperativeHandle(ref, () => ({
     scrollToSelectedModel: () => {
@@ -320,6 +325,16 @@ export const ModelList = forwardRef(function ModelList(
                 <span className="flex-1 text-left truncate min-w-0">
                   {model.model}
                 </span>
+                {(showQuant || showTags) && (model as any)?.details && (
+                  <div className="flex gap-1 items-center flex-shrink-0">
+                    {showQuant && (model as any).details?.quantization_level && (
+                      <ModelTag label={(model as any).details.quantization_level} variant="quant" />
+                    )}
+                    {showTags && (model as any).details?.parameter_size && (
+                      <ModelTag label={(model as any).details.parameter_size} variant="size" />
+                    )}
+                  </div>
+                )}
                 {model.isCloud() && (
                   <svg
                     className="h-3 fill-current text-neutral-500 dark:text-neutral-400"

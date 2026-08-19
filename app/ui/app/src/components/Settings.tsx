@@ -204,6 +204,7 @@ export default function Settings() {
   const handleResetToDefaults = () => {
     if (settings) {
       const defaultSettings = new SettingsType({
+        ...settings,
         Expose: false,
         Browser: false,
         Models: "",
@@ -211,6 +212,17 @@ export default function Settings() {
         Tools: false,
         ContextLength: 0,
         AutoUpdateEnabled: false,
+        CustomCSS: "",
+        ShowRawOutput: false,
+        APIKey: "",
+        ShowModelQuantization: false,
+        ShowModelTags: false,
+        TitleGenerationUseLLM: false,
+        TitleGenerationUseFirstLine: false,
+        TitleGenerationPrompt: "",
+        AskForTitleConfirmation: false,
+        McpServers: "",
+        PdfMode: "text",
       });
       updateSettingsMutation.mutate(defaultSettings);
     }
@@ -566,6 +578,210 @@ export default function Settings() {
                     </div>
                   </div>
                 </div>
+              </Field>
+            </div>
+          </div>
+
+          {/* Custom CSS */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>Custom CSS</Label>
+                <Description>Inject custom CSS styles into the app UI.</Description>
+                <textarea
+                  value={(settings as any)?.CustomCSS || ""}
+                  onChange={(e) => handleChange("CustomCSS" as any, e.target.value)}
+                  className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
+                  placeholder="/* Your custom CSS here */"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Display Settings */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Show raw output toggle</Label>
+                      <Description>Show a toggle on assistant messages to display raw text instead of formatted Markdown.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.ShowRawOutput || false}
+                      onChange={(checked) => handleChange("ShowRawOutput" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Show model quantization</Label>
+                      <Description>Display quantization level (e.g., Q4_K_M) in the model picker.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.ShowModelQuantization || false}
+                      onChange={(checked) => handleChange("ShowModelQuantization" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Show model tags</Label>
+                      <Description>Display parameter size and family badges in the model picker.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.ShowModelTags || false}
+                      onChange={(checked) => handleChange("ShowModelTags" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
+            </div>
+          </div>
+
+          {/* API Key */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>API Key</Label>
+                <Description>Bearer token for authenticating with the Ollama server. Leave empty for local servers.</Description>
+                <Input
+                  type="password"
+                  value={(settings as any)?.APIKey || ""}
+                  onChange={(e) => handleChange("APIKey" as any, e.target.value)}
+                  placeholder="Optional"
+                  className="mt-2 max-w-xs"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Title Generation */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>Title Generation</Label>
+                <Description>Automatically generate titles for new chats.</Description>
+              </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Use LLM to generate titles</Label>
+                      <Description>Send a secondary LLM request to generate a descriptive title.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.TitleGenerationUseLLM || false}
+                      onChange={(checked) => handleChange("TitleGenerationUseLLM" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Use first line as title</Label>
+                      <Description>Use the first line of the user's message as the chat title.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.TitleGenerationUseFirstLine || false}
+                      onChange={(checked) => handleChange("TitleGenerationUseFirstLine" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
+              <Field>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3 flex-1">
+                    <div>
+                      <Label>Ask for confirmation</Label>
+                      <Description>Show a confirmation dialog before applying a generated title.</Description>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <Switch
+                      checked={(settings as any)?.AskForTitleConfirmation || false}
+                      onChange={(checked) => handleChange("AskForTitleConfirmation" as any, checked)}
+                    />
+                  </div>
+                </div>
+              </Field>
+              <Field>
+                <Label>Custom title prompt</Label>
+                <Description>Custom prompt template. Use {"{{USER}}"} and {"{{ASSISTANT}}"} placeholders. Leave empty for default.</Description>
+                <textarea
+                  value={(settings as any)?.TitleGenerationPrompt || ""}
+                  onChange={(e) => handleChange("TitleGenerationPrompt" as any, e.target.value)}
+                  className="mt-2 w-full h-20 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm text-neutral-900 dark:text-neutral-100"
+                  placeholder="Generate a short title for this conversation..."
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* PDF Processing */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>PDF Processing Mode</Label>
+                <Description>Choose how PDF files are processed when attached to chats.</Description>
+                <div className="mt-2 flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pdfMode"
+                      value="text"
+                      checked={((settings as any)?.PdfMode || "text") === "text"}
+                      onChange={() => handleChange("PdfMode" as any, "text")}
+                    />
+                    <span className="text-sm">Extract text (works with all models)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pdfMode"
+                      value="images"
+                      checked={(settings as any)?.PdfMode === "images"}
+                      onChange={() => handleChange("PdfMode" as any, "images")}
+                    />
+                    <span className="text-sm">Render as images (requires vision model)</span>
+                  </label>
+                </div>
+              </Field>
+            </div>
+          </div>
+
+          {/* MCP Servers */}
+          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
+            <div className="space-y-4 p-4">
+              <Field>
+                <Label>MCP Servers</Label>
+                <Description>Configure Model Context Protocol servers. Server connections will be available in a future update.</Description>
+                <textarea
+                  value={(settings as any)?.McpServers || ""}
+                  onChange={(e) => handleChange("McpServers" as any, e.target.value)}
+                  className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
+                  placeholder='[{"id":"example","name":"Example","url":"https://example.com/mcp","enabled":false}]'
+                />
+                <Description>JSON array of MCP server configurations. Format: id, name, url, enabled, description.</Description>
               </Field>
             </div>
           </div>

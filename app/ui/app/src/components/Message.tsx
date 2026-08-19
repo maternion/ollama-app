@@ -4,6 +4,7 @@ import StreamingMarkdownContent from "./StreamingMarkdownContent";
 import { ImageThumbnail } from "./ImageThumbnail";
 import { isImageFile } from "@/utils/imageUtils";
 import CopyButton from "./CopyButton";
+import { useSettings } from "@/hooks/useSettings";
 import React, { useState, useMemo, useRef } from "react";
 
 const Message = React.memo(
@@ -890,6 +891,9 @@ function OtherRoleMessage({
   lastToolQuery?: string;
 }) {
   const messageRef = useRef<HTMLDivElement>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const { settings: displaySettings } = useSettings();
+  const showRawOutput = (displaySettings as any)?.showRawOutput ?? false;
 
   return (
     <div
@@ -930,7 +934,11 @@ function OtherRoleMessage({
               id="message-container"
               ref={messageRef}
             >
-              {message.role === "tool" ? (
+              {showRawOutput && showRaw && message.role !== "tool" && message.content ? (
+                <pre className="whitespace-pre-wrap break-words text-sm max-w-full font-mono">
+                  {message.content}
+                </pre>
+              ) : message.role === "tool" ? (
                 <ToolRoleContent
                   message={message}
                   browserToolResult={browserToolResult}
@@ -983,6 +991,15 @@ function OtherRoleMessage({
               className="copy-button z-10 text-neutral-500 dark:text-neutral-400"
               title="Copy"
             />
+            {showRawOutput && (
+              <button
+                onClick={() => setShowRaw(!showRaw)}
+                className="text-neutral-500 dark:text-neutral-400 text-sm hover:text-neutral-700 dark:hover:text-neutral-200"
+                title={showRaw ? "Show formatted" : "Show raw text"}
+              >
+                {showRaw ? "Markdown" : "Raw"}
+              </button>
+            )}
             {((message as any).evalCount != null || (message as any).tokensPerSecond != null || (message as any).evalDuration != null) && (
               <span className="text-sm text-neutral-400 dark:text-neutral-500 select-none">
                 {(message as any).evalDuration != null && `${(message as any).evalDuration}`}

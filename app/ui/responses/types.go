@@ -5,6 +5,7 @@ package responses
 import (
 	"time"
 
+	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/types/model"
 )
@@ -26,9 +27,10 @@ type ChatResponse struct {
 }
 
 type Model struct {
-	Model      string     `json:"model"`
-	Digest     string     `json:"digest,omitempty"`
-	ModifiedAt *time.Time `json:"modified_at,omitempty"`
+	Model      string            `json:"model"`
+	Digest     string            `json:"digest,omitempty"`
+	ModifiedAt *time.Time        `json:"modified_at,omitempty"`
+	Details    *api.ModelDetails `json:"details,omitempty"`
 }
 
 type ModelsResponse struct {

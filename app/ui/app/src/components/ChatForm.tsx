@@ -32,6 +32,7 @@ import {
 } from "@/hooks/useChats";
 import { useNavigate } from "@tanstack/react-router";
 import { useSelectedModel } from "@/hooks/useSelectedModel";
+import { useDraft } from "@/contexts/DraftContext";
 
 export type ThinkingLevel = "low" | "medium" | "high";
 
@@ -114,6 +115,7 @@ function ChatForm({
   const cancelMessage = useCancelMessage();
   const isDownloading = isDownloadingModel;
   const { selectedModel } = useSelectedModel();
+  const { getDraft, saveDraft, clearDraft } = useDraft();
   const hasVisionCapability = useHasVisionCapability(selectedModel?.model);
   const hasAudioCapability = useHasAudioCapability(selectedModel?.model);
   const { isAuthenticated, isLoading: isLoadingUser } = useUser();
@@ -123,6 +125,8 @@ function ChatForm({
   const [fileUploadError, setFileUploadError] = useState<ErrorEvent | null>(
     null,
   );
+  const messageRef = useRef(message);
+  messageRef.current = message;
 
   const handleThinkingLevelDropdownToggle = (isOpen: boolean) => {
     if (
@@ -316,9 +320,26 @@ function ChatForm({
     }
   }, [editingMessage]);
 
-  // Clear composition and reset textarea height when chatId changes
+  // Save draft on unmount or when chatId changes
   useEffect(() => {
-    resetChatForm();
+    return () => {
+      saveDraft(chatId, messageRef.current.content);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  // Restore draft (or clear) when chatId changes or on mount
+  useEffect(() => {
+    const draft = getDraft(chatId);
+    if (draft) {
+      setMessage((prev) => ({ ...prev, content: draft }));
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    } else {
+      resetChatForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
   // Auto-focus textarea when autoFocus is true or when streaming completes (but not when editing)
@@ -534,6 +555,7 @@ function ChatForm({
       attachments: [],
       fileErrors: [],
     });
+    clearDraft(chatId);
 
     // Reset textarea height and refocus after submit
     setTimeout(() => {

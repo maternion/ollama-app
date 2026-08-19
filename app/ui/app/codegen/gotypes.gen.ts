@@ -219,16 +219,40 @@ export class ChatResponse {
 	    return a;
 	}
 }
+export class ModelDetails {
+    parent_model: string;
+    format: string;
+    family: string;
+    families: string[];
+    parameter_size: string;
+    quantization_level: string;
+    context_length?: number;
+    embedding_length?: number;
+
+    constructor(source: any = {}) {
+        if ('string' === typeof source) source = JSON.parse(source);
+        this.parent_model = source["parent_model"];
+        this.format = source["format"];
+        this.family = source["family"];
+        this.families = source["families"];
+        this.parameter_size = source["parameter_size"];
+        this.quantization_level = source["quantization_level"];
+        this.context_length = source["context_length"];
+        this.embedding_length = source["embedding_length"];
+    }
+}
 export class Model {
     model: string;
     digest?: string;
     modified_at?: Time;
+    details?: ModelDetails;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
         this.model = source["model"];
         this.digest = source["digest"];
         this.modified_at = this.convertValues(source["modified_at"], Time);
+        this.details = this.convertValues(source["details"], ModelDetails);
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -428,6 +452,17 @@ export class Settings {
     SidebarOpen: boolean;
     LastHomeView: string;
     AutoUpdateEnabled: boolean;
+    CustomCSS: string;
+    ShowRawOutput: boolean;
+    APIKey: string;
+    ShowModelQuantization: boolean;
+    ShowModelTags: boolean;
+    TitleGenerationUseLLM: boolean;
+    TitleGenerationUseFirstLine: boolean;
+    TitleGenerationPrompt: string;
+    AskForTitleConfirmation: boolean;
+    McpServers: string;
+    PdfMode: string;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -447,6 +482,17 @@ export class Settings {
         this.SidebarOpen = source["SidebarOpen"];
         this.LastHomeView = source["LastHomeView"];
         this.AutoUpdateEnabled = source["AutoUpdateEnabled"];
+        this.CustomCSS = source["CustomCSS"];
+        this.ShowRawOutput = source["ShowRawOutput"];
+        this.APIKey = source["APIKey"];
+        this.ShowModelQuantization = source["ShowModelQuantization"];
+        this.ShowModelTags = source["ShowModelTags"];
+        this.TitleGenerationUseLLM = source["TitleGenerationUseLLM"];
+        this.TitleGenerationUseFirstLine = source["TitleGenerationUseFirstLine"];
+        this.TitleGenerationPrompt = source["TitleGenerationPrompt"];
+        this.AskForTitleConfirmation = source["AskForTitleConfirmation"];
+        this.McpServers = source["McpServers"];
+        this.PdfMode = source["PdfMode"];
     }
 }
 export class SettingsResponse {

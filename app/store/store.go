@@ -175,6 +175,39 @@ type Settings struct {
 
 	// AutoUpdateEnabled indicates if automatic updates should be downloaded
 	AutoUpdateEnabled bool
+
+	// CustomCSS stores user-provided CSS to inject into the app UI
+	CustomCSS string
+
+	// ShowRawOutput shows a toggle to display assistant messages as raw text
+	ShowRawOutput bool
+
+	// APIKey stores an optional API key for authentication with remote endpoints
+	APIKey string
+
+	// ShowModelQuantization shows quantization level badges in the model picker
+	ShowModelQuantization bool
+
+	// ShowModelTags shows model tags (parameter size, family) in the model picker
+	ShowModelTags bool
+
+	// TitleGenerationUseLLM uses an LLM call to generate chat titles
+	TitleGenerationUseLLM bool
+
+	// TitleGenerationUseFirstLine uses the first line of the user's message as the title
+	TitleGenerationUseFirstLine bool
+
+	// TitleGenerationPrompt is a custom prompt template for LLM title generation
+	TitleGenerationPrompt string
+
+	// AskForTitleConfirmation shows a confirmation dialog before applying a generated title
+	AskForTitleConfirmation bool
+
+	// McpServers stores MCP server configurations as a JSON array string
+	McpServers string
+
+	// PdfMode controls how PDFs are processed: "text" (default) or "images"
+	PdfMode string
 }
 
 // DefaultModelsDir returns the default models directory for the app.
