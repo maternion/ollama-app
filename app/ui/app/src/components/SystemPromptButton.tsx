@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { MessageSquare } from "lucide-react";
 
 interface SystemPromptButtonProps {
   isVisible?: boolean;
@@ -39,9 +40,7 @@ export function SystemPromptButton({ isVisible, systemMessage, onSystemMessageCh
             : "text-neutral-500 dark:text-neutral-400"
         }`}
       >
-        <svg className="w-4 flex-none fill-current" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 8H2" />
-        </svg>
+        <MessageSquare className="w-4 h-4" />
       </button>
 
       {isOpen && (

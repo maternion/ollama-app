@@ -291,7 +291,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="w-full p-6 overflow-y-auto flex-1 overscroll-contain">
+    <div className="w-full p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain">
       <div className="space-y-4 max-w-2xl mx-auto">
           {/* Connect Ollama Account */}
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">

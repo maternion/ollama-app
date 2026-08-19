@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { Braces } from "lucide-react";
 
 interface SchemaButtonProps {
   isVisible?: boolean;
@@ -44,7 +45,7 @@ export function SchemaButton({ isVisible, isActive, schema, onSchemaChange, onTo
             : "text-neutral-500 dark:text-neutral-400"
         }`}
       >
-        <span className="text-sm">{"{ }"}</span>
+        <Braces className="w-4 h-4" />
       </button>
 
       {isOpen && (

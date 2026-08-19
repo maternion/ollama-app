@@ -133,6 +133,8 @@ export default function Chat({ chatId }: { chatId: string }) {
       webSearch?: boolean;
       fileTools?: boolean;
       think?: boolean | string;
+      format?: string;
+      systemMessage?: string;
     },
   ) => {
     // Clear any existing errors when sending a new message
@@ -154,6 +156,8 @@ export default function Chat({ chatId }: { chatId: string }) {
       webSearch: options.webSearch,
       fileTools: options.fileTools,
       think: options.think,
+      format: options.format,
+      systemMessage: options.systemMessage,
       onChatEvent: (event) => {
         if (event.eventName === "chat_created" && event.chatId) {
           navigate({

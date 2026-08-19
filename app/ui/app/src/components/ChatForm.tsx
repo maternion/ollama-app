@@ -1,11 +1,10 @@
 import Logo from "@/components/Logo";
 import { ModelPicker } from "@/components/ModelPicker";
-import { WebSearchButton } from "@/components/WebSearchButton";
 import { ImageThumbnail } from "@/components/ImageThumbnail";
 import { AudioThumbnail } from "@/components/AudioThumbnail";
-import { FileAttachmentMenu } from "@/components/FileAttachmentMenu";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { isImageFile, isAudioFile } from "@/utils/imageUtils";
+import { processFiles } from "@/utils/fileValidation";
 import {
   useHasVisionCapability,
   useHasToolsCapability,
@@ -16,10 +15,9 @@ import { DisplayLogin } from "@/components/DisplayLogin";
 import { ErrorEvent, Message } from "@/gotypes";
 import { useSettings } from "@/hooks/useSettings";
 import { useCloudStatus } from "@/hooks/useCloudStatus";
-import { ThinkButton } from "./ThinkButton";
-import { SystemPromptButton } from "@/components/SystemPromptButton";
-import { SchemaButton } from "@/components/SchemaButton";
 import { useJsonSchema } from "@/hooks/useJsonSchema";
+// @ts-ignore - ChatFormAddButton is created by another agent in parallel
+import { ChatFormAddButton } from "@/components/ChatFormAddButton";
 import { ErrorMessage } from "./ErrorMessage";
 import {
   useRef,
@@ -65,6 +63,8 @@ interface ChatFormProps {
       webSearch?: boolean;
       fileTools?: boolean;
       think?: boolean | string;
+      format?: string;
+      systemMessage?: string;
     },
   ) => void;
   autoFocus?: boolean;
@@ -131,16 +131,6 @@ function ChatForm({
   );
   const messageRef = useRef(message);
   messageRef.current = message;
-
-  const handleThinkingLevelDropdownToggle = (isOpen: boolean) => {
-    if (
-      isOpen &&
-      modelPickerRef.current &&
-      (modelPickerRef.current as any).closeDropdown
-    ) {
-      (modelPickerRef.current as any).closeDropdown();
-    }
-  };
 
   const handleModelPickerDropdownToggle = (isOpen: boolean) => {
     if (
@@ -557,6 +547,8 @@ function ChatForm({
         index: undefined,
         webSearch: useWebSearch,
         think: useThink,
+        format: useFormat,
+        systemMessage: useSystemMessage,
       });
     } else {
       sendMessageMutation({
@@ -686,14 +678,15 @@ function ChatForm({
     }, 0);
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+    const { validFiles, errors } = await processFiles(Array.from(files), {
+      hasVisionCapability,
+      hasAudioCapability,
     });
+    handleFilesReceived(validFiles, errors);
 
     // Reset file input
     if (e.target) {
@@ -923,93 +916,56 @@ function ChatForm({
         </div>
 
         {/* Controls */}
-        <div className="flex w-full items-center justify-end gap-2 px-3 pt-2">
-          {/* Tool buttons - animate from underneath model picker */}
+        <div className="flex w-full items-center gap-2 px-3 pt-2">
+          {/* Add button with consolidated controls dropdown */}
           {!isDisabled && (
-            <div className="flex-1 flex justify-end items-center gap-2">
-              <div className={`flex gap-2`}>
-                {/* File Upload Buttons */}
-                <FileAttachmentMenu
-                  onFilesReceived={handleFilesReceived}
-                  hasVisionCapability={hasVisionCapability}
-                  selectedModel={selectedModel?.model ?? ""}
-                />
-                {/* Thinking Level Button */}
-                {modelSupportsThinkingLevels && (
-                  <>
-                    <ThinkButton
-                      mode="thinkingLevel"
-                      ref={thinkingLevelButtonRef}
-                      isVisible={modelSupportsThinkingLevels}
-                      currentLevel={thinkLevel}
-                      onLevelChange={setThinkingLevel}
-                      onDropdownToggle={handleThinkingLevelDropdownToggle}
-                    />
-                  </>
-                )}
-                {/* Think Button turn on and off */}
-                {supportsThinkToggling && !modelSupportsThinkingLevels && (
-                  <>
-                    <ThinkButton
-                      mode="think"
-                      ref={thinkButtonRef}
-                      isVisible={
-                        supportsThinkToggling && !modelSupportsThinkingLevels
-                      }
-                      isActive={thinkEnabled}
-                      onToggle={() => {
-                        // DeepSeek-v3 specific - thinking and web search are mutually exclusive
-                        if (supportsThinkToggling) {
-                          const enable = !thinkEnabled;
-                          setSettings({
-                            ThinkEnabled: enable,
-                            ...(enable ? { WebSearchEnabled: false } : {}),
-                          });
-                          return;
-                        }
-                        setSettings({ ThinkEnabled: !thinkEnabled });
-                      }}
-                    />
-                  </>
-                )}
-                <WebSearchButton
-                  ref={webSearchButtonRef}
-                  isVisible={supportsWebSearch && cloudDisabled === false}
-                  isActive={webSearchEnabled}
-                  onToggle={() => {
-                    if (!webSearchEnabled && !isAuthenticated) {
-                      setLoginPromptFeature("webSearch");
-                    }
-                    const enable = !webSearchEnabled;
-                    if (supportsThinkToggling && enable) {
-                      setSettings({
-                        WebSearchEnabled: true,
-                        ThinkEnabled: false,
-                      });
-                      return;
-                    }
-                    setSettings({ WebSearchEnabled: enable });
-                  }}
-                />
-                {/* System Prompt Button */}
-                <SystemPromptButton
-                  isVisible={true}
-                  systemMessage={systemMessage}
-                  onSystemMessageChange={(msg: string) =>
-                    setSettings({ SystemMessage: msg } as any)
-                  }
-                />
-                {/* JSON Schema Button */}
-                <SchemaButton
-                  isVisible={true}
-                  isActive={schemaActive}
-                  schema={jsonSchema}
-                  onSchemaChange={setJsonSchema}
-                  onToggle={toggleSchema}
-                />
-              </div>
-            </div>
+            <ChatFormAddButton
+              isVisible={true}
+              modelSupportsThinkingLevels={modelSupportsThinkingLevels}
+              supportsThinkToggling={supportsThinkToggling}
+              thinkEnabled={thinkEnabled}
+              thinkLevel={thinkLevel}
+              onThinkLevelChange={(level: string) => setThinkingLevel(level as ThinkingLevel)}
+              onThinkToggle={() => {
+                if (supportsThinkToggling) {
+                  const enable = !thinkEnabled;
+                  setSettings({
+                    ThinkEnabled: enable,
+                    ...(enable ? { WebSearchEnabled: false } : {}),
+                  } as any);
+                }
+              }}
+              webSearchEnabled={webSearchEnabled}
+              onWebSearchToggle={() => {
+                if (!webSearchEnabled && !isAuthenticated) {
+                  setLoginPromptFeature("webSearch");
+                }
+                const enable = !webSearchEnabled;
+                if (supportsThinkToggling && enable) {
+                  setSettings({
+                    WebSearchEnabled: true,
+                    ThinkEnabled: false,
+                  } as any);
+                  return;
+                }
+                setSettings({ WebSearchEnabled: enable } as any);
+              }}
+              systemMessage={systemMessage}
+              onSystemMessageChange={(msg: string) =>
+                setSettings({ SystemMessage: msg } as any)
+              }
+              schemaActive={schemaActive}
+              schema={jsonSchema}
+              onSchemaChange={setJsonSchema}
+              onSchemaToggle={toggleSchema}
+              onFileAttach={() => fileInputRef.current?.click()}
+              hasVisionCapability={hasVisionCapability}
+              hasAudioCapability={hasAudioCapability}
+            />
           )}
+
+          {/* Spacer pushes everything else to the right */}
+          <div className="flex-1" />
 
           {/* Model picker and submit button */}
           <div className="flex items-center gap-2 relative z-20">
