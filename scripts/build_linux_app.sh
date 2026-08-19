@@ -33,7 +33,12 @@ fi
 # Step 1: Build React app
 echo "--- Building React SPA ---"
 cd "$ROOT_DIR/app/ui/app"
-npm install
+# Skip npm install if node_modules exists and package-lock hasn't changed
+if [ ! -d "node_modules" ] || [ "package-lock.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null; then
+  npm install
+else
+  echo "node_modules up to date, skipping npm install"
+fi
 npm run build
 
 # Step 2: Go generate
