@@ -216,7 +216,7 @@ export const ChatFormAddButton = forwardRef<
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full mb-2 left-0 z-50 min-w-[220px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-xl py-1">
+        <div className="absolute bottom-full mb-2 left-0 z-50 min-w-[320px] max-w-[400px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-xl py-1">
           {/* Reasoning */}
           {showReasoning && (
             <>

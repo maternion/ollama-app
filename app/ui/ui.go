@@ -991,11 +991,8 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			s.log().Error("failed to load settings for chat request", "error", err)
 		}
-		// Use system message from request, or fall back to global setting
+		// Use system message from request only (per-chat, not global)
 		systemMsg := req.SystemMessage
-		if systemMsg == "" && settings.SystemMessage != "" {
-			systemMsg = settings.SystemMessage
-		}
 		chatReq, err := s.buildChatRequest(reqChat, req.Model, thinkValue, availableTools, &settings, req.Format, systemMsg)
 		if err != nil {
 			return err

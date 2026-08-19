@@ -958,25 +958,15 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* System Prompt */}
+          {/* System Message Display */}
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
-              <Field>
-                <Label>System Prompt</Label>
-                <Description>Default system prompt prepended to all new conversations.</Description>
-                <textarea
-                  value={(settings as any)?.SystemMessage || ""}
-                  onChange={(e) => handleChange("SystemMessage" as any, e.target.value)}
-                  className="mt-2 w-full h-20 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm text-neutral-900 dark:text-neutral-100"
-                  placeholder="You are a helpful assistant..."
-                />
-              </Field>
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
                     <div>
                       <Label>Show system messages</Label>
-                      <Description>Display system messages in the conversation view.</Description>
+                      <Description>Display system messages in the conversation view. Set per-chat using the + menu.</Description>
                     </div>
                   </div>
                   <div className="flex-shrink-0">

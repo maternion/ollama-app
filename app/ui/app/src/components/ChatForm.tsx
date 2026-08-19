@@ -152,7 +152,12 @@ function ChatForm({
     thinkLevel: settingsThinkLevel,
   } = settings;
   const { cloudDisabled } = useCloudStatus();
-  const systemMessage = (settings as any)?.systemMessage ?? "";
+  // System message is per-chat, not global — use local state
+  const [systemMessage, setSystemMessage] = useState("");
+  // Clear system message when switching chats
+  useEffect(() => {
+    setSystemMessage("");
+  }, [chatId]);
   const {
     active: schemaActive,
     schema: jsonSchema,
@@ -951,9 +956,7 @@ function ChatForm({
                 setSettings({ WebSearchEnabled: enable } as any);
               }}
               systemMessage={systemMessage}
-              onSystemMessageChange={(msg: string) =>
-                setSettings({ SystemMessage: msg } as any)
-              }
+              onSystemMessageChange={setSystemMessage}
               schemaActive={schemaActive}
               schema={jsonSchema}
               onSchemaChange={setJsonSchema}
