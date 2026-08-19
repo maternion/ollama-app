@@ -6,6 +6,7 @@ import { routeTree } from "./routeTree.gen";
 import { fetchUser } from "./api";
 import { StreamingProvider } from "./contexts/StreamingContext";
 import { DraftProvider } from "./contexts/DraftContext";
+import { ChatSettingsProvider } from "./contexts/ChatSettingsContext";
 import { useCustomCSS } from "./hooks/useCustomCSS";
 
 function CustomCSSInjector({ children }: { children: ReactNode }) {
@@ -50,9 +51,11 @@ if (!rootElement.innerHTML) {
       <QueryClientProvider client={queryClient}>
         <StreamingProvider>
           <DraftProvider>
-            <CustomCSSInjector>
-              <RouterProvider router={router} />
-            </CustomCSSInjector>
+            <ChatSettingsProvider>
+              <CustomCSSInjector>
+                <RouterProvider router={router} />
+              </CustomCSSInjector>
+            </ChatSettingsProvider>
           </DraftProvider>
         </StreamingProvider>
       </QueryClientProvider>

@@ -15,7 +15,7 @@ import { DisplayLogin } from "@/components/DisplayLogin";
 import { ErrorEvent, Message } from "@/gotypes";
 import { useSettings } from "@/hooks/useSettings";
 import { useCloudStatus } from "@/hooks/useCloudStatus";
-import { useJsonSchema } from "@/hooks/useJsonSchema";
+import { useChatSettings } from "@/contexts/ChatSettingsContext";
 // @ts-ignore - ChatFormAddButton is created by another agent in parallel
 import { ChatFormAddButton } from "@/components/ChatFormAddButton";
 import { ErrorMessage } from "./ErrorMessage";
@@ -147,33 +147,41 @@ function ChatForm({
     setSettings,
   } = useSettings();
   const {
-    webSearchEnabled,
     thinkEnabled,
-    thinkLevel: settingsThinkLevel,
   } = settings;
   const { cloudDisabled } = useCloudStatus();
-  // System message is per-chat, not global — use local state
-  const [systemMessage, setSystemMessage] = useState("");
-  // Clear system message when switching chats
-  useEffect(() => {
-    setSystemMessage("");
-  }, [chatId]);
-  const {
-    active: schemaActive,
-    schema: jsonSchema,
-    toggle: toggleSchema,
-    setSchema: setJsonSchema,
-  } = useJsonSchema();
+  const { getChatSettings, updateChatSettings } = useChatSettings();
+  const chatSettings = getChatSettings(chatId);
+  const systemMessage = chatSettings.systemMessage;
+  const schemaActive = chatSettings.schemaActive;
+  const jsonSchema = chatSettings.schema;
+  const thinkLevel: ThinkingLevel = chatSettings.thinkLevel as ThinkingLevel;
+  const webSearchEnabled = chatSettings.webSearchEnabled;
+
+  const setSystemMessage = (value: string) => {
+    updateChatSettings(chatId, { systemMessage: value });
+  };
+
+  const toggleSchema = () => {
+    const current = getChatSettings(chatId);
+    updateChatSettings(chatId, {
+      schemaActive: !current.schemaActive,
+      schema: current.schemaActive ? "" : current.schema,
+    });
+  };
+
+  const setJsonSchema = (value: string) => {
+    updateChatSettings(chatId, {
+      schema: value,
+      schemaActive: value.trim() ? true : false,
+    });
+  };
+
+  const setThinkingLevel = (newLevel: ThinkingLevel) => {
+    updateChatSettings(chatId, { thinkLevel: newLevel });
+  };
 
   const supportsWebSearch = useHasToolsCapability(selectedModel?.model);
-  // Use per-chat thinking level instead of global
-  const thinkLevel: ThinkingLevel =
-    settingsThinkLevel === "none" || !settingsThinkLevel
-      ? "medium"
-      : (settingsThinkLevel as ThinkingLevel);
-  const setThinkingLevel = (newLevel: ThinkingLevel) => {
-    setSettings({ ThinkLevel: newLevel });
-  };
 
   const modelSupportsThinkingLevels =
     selectedModel?.model.toLowerCase().startsWith("gpt-oss") || false;
@@ -182,21 +190,22 @@ function ChatForm({
 
   useEffect(() => {
     if (supportsThinkToggling && thinkEnabled && webSearchEnabled) {
-      setSettings({ WebSearchEnabled: false });
+      updateChatSettings(chatId, { webSearchEnabled: false });
     }
   }, [
     selectedModel?.model,
     supportsThinkToggling,
     thinkEnabled,
     webSearchEnabled,
-    setSettings,
+    chatId,
+    updateChatSettings,
   ]);
 
   useEffect(() => {
     if (cloudDisabled && webSearchEnabled) {
-      setSettings({ WebSearchEnabled: false });
+      updateChatSettings(chatId, { webSearchEnabled: false });
     }
-  }, [cloudDisabled, webSearchEnabled, setSettings]);
+  }, [cloudDisabled, webSearchEnabled, chatId, updateChatSettings]);
 
   const removeFile = (index: number) => {
     setMessage((prev) => ({
@@ -737,7 +746,7 @@ function ChatForm({
           className="mb-4"
           onDismiss={() => {
             // Disable the active features when dismissing
-            if (webSearchEnabled) setSettings({ WebSearchEnabled: false });
+            if (webSearchEnabled) updateChatSettings(chatId, { webSearchEnabled: false });
             setLoginPromptFeature(null);
           }}
         />
@@ -936,8 +945,10 @@ function ChatForm({
                   const enable = !thinkEnabled;
                   setSettings({
                     ThinkEnabled: enable,
-                    ...(enable ? { WebSearchEnabled: false } : {}),
                   } as any);
+                  if (enable) {
+                    updateChatSettings(chatId, { webSearchEnabled: false });
+                  }
                 }
               }}
               webSearchEnabled={webSearchEnabled}
@@ -947,13 +958,11 @@ function ChatForm({
                 }
                 const enable = !webSearchEnabled;
                 if (supportsThinkToggling && enable) {
-                  setSettings({
-                    WebSearchEnabled: true,
-                    ThinkEnabled: false,
-                  } as any);
+                  updateChatSettings(chatId, { webSearchEnabled: true });
+                  setSettings({ ThinkEnabled: false } as any);
                   return;
                 }
-                setSettings({ WebSearchEnabled: enable } as any);
+                updateChatSettings(chatId, { webSearchEnabled: enable });
               }}
               systemMessage={systemMessage}
               onSystemMessageChange={setSystemMessage}
