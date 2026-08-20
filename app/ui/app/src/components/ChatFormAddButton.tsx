@@ -4,6 +4,8 @@ import {
   Lightbulb,
   LightbulbOff,
   Paperclip,
+  Image,
+  AudioLines,
   MessageSquare,
   Braces,
   Globe,
@@ -314,52 +316,40 @@ export const ChatFormAddButton = forwardRef<
             <div className="border-t border-neutral-100 dark:border-neutral-700 my-1" />
           )}
 
-          {/* Add Files — submenu */}
-          <div className="relative group">
+          {/* Files / Images / Audio — direct items */}
+          <button
+            type="button"
+            onClick={handlePickFiles}
+            className="w-full text-left px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer flex items-center gap-2 transition-colors"
+          >
+            <Paperclip className="w-4 h-4 flex-shrink-0" />
+            Files
+          </button>
+          {hasVisionCapability && (
             <button
               type="button"
+              onClick={handlePickImages}
               className="w-full text-left px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer flex items-center gap-2 transition-colors"
             >
-              <Paperclip className="w-4 h-4 flex-shrink-0" />
-              <span className="flex-1">Add files</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <Image className="w-4 h-4 flex-shrink-0" />
+              Images
             </button>
-            <div className="absolute left-full top-0 ml-1 hidden group-hover:block min-w-[140px] rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-xl py-1">
-              {hasVisionCapability && (
-                <button
-                  type="button"
-                  onClick={handlePickImages}
-                  className="w-full text-left px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer flex items-center gap-2 transition-colors"
-                >
-                  <Paperclip className="w-4 h-4 flex-shrink-0" />
-                  Images
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handlePickFiles}
-                className="w-full text-left px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer flex items-center gap-2 transition-colors"
-              >
-                <Paperclip className="w-4 h-4 flex-shrink-0" />
-                Files
-              </button>
-              {hasAudioCapability && (
-                <button
-                  type="button"
-                  onClick={handlePickAudio}
-                  className="w-full text-left px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer flex items-center gap-2 transition-colors"
-                >
-                  <Paperclip className="w-4 h-4 flex-shrink-0" />
-                  Audio
-                </button>
-              )}
-              {pdfMode === "images" && (
-                <div className="px-3 py-1.5 text-xs text-neutral-400 dark:text-neutral-500 border-t border-neutral-100 dark:border-neutral-700">
-                  PDFs: as images
-                </div>
-              )}
+          )}
+          {hasAudioCapability && (
+            <button
+              type="button"
+              onClick={handlePickAudio}
+              className="w-full text-left px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer flex items-center gap-2 transition-colors"
+            >
+              <AudioLines className="w-4 h-4 flex-shrink-0" />
+              Audio
+            </button>
+          )}
+          {pdfMode === "images" && (
+            <div className="px-3 py-1.5 text-xs text-neutral-400 dark:text-neutral-500 border-t border-neutral-100 dark:border-neutral-700 mt-1">
+              PDFs: processing as images
             </div>
-          </div>
+          )}
 
           {/* System Message — accordion */}
           <button
