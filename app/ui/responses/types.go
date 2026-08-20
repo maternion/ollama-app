@@ -58,7 +58,7 @@ type ModelCapabilitiesResponse struct {
 
 // ChatEvent is for regular chat messages and assistant interactions
 type ChatEvent struct {
-	EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\" | \"stats\""`
+	EventName string `json:"eventName" ts_type:"\"chat\" | \"thinking\" | \"assistant_with_tools\" | \"tool_call\" | \"tool\" | \"tool_result\" | \"done\" | \"chat_created\" | \"stats\" | \"title\""`
 
 	// Chat/Assistant message fields
 	Content           *string    `json:"content,omitempty"`
@@ -75,6 +75,9 @@ type ChatEvent struct {
 
 	// Chat creation fields
 	ChatID *string `json:"chatId,omitempty"`
+
+	// Title field (for title event)
+	Title *string `json:"title,omitempty"`
 
 	// Stats fields (for stats event)
 	EvalCount       *int     `json:"evalCount,omitempty"`
@@ -126,16 +129,16 @@ type Attachment struct {
 }
 
 type ChatRequest struct {
-	Model        string          `json:"model"`
-	Prompt       string          `json:"prompt"`
-	Index        *int            `json:"index,omitempty"`
-	Attachments  []Attachment    `json:"attachments,omitempty"`
-	WebSearch    *bool           `json:"web_search,omitempty"`
-	FileTools    *bool           `json:"file_tools,omitempty"`
-	ForceUpdate  bool            `json:"forceUpdate,omitempty"`
-	Think        any             `json:"think,omitempty"`
-	Format       json.RawMessage `json:"format,omitempty"`
-	SystemMessage string        `json:"system_message,omitempty"`
+	Model         string          `json:"model"`
+	Prompt        string          `json:"prompt"`
+	Index         *int            `json:"index,omitempty"`
+	Attachments   []Attachment    `json:"attachments,omitempty"`
+	WebSearch     *bool           `json:"web_search,omitempty"`
+	FileTools     *bool           `json:"file_tools,omitempty"`
+	ForceUpdate   bool            `json:"forceUpdate,omitempty"`
+	Think         any             `json:"think,omitempty"`
+	Format        json.RawMessage `json:"format,omitempty"`
+	SystemMessage string          `json:"system_message,omitempty"`
 }
 
 type Error struct {

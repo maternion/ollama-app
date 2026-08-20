@@ -13,6 +13,16 @@ import {
   WrenchIcon,
   CloudIcon,
   ArrowDownTrayIcon,
+  CodeBracketIcon,
+  TagIcon,
+  SignalIcon,
+  SparklesIcon,
+  DocumentTextIcon,
+  ServerStackIcon,
+  AdjustmentsHorizontalIcon,
+  ChatBubbleLeftRightIcon,
+  PaintBrushIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/20/solid";
 import { CogIcon } from "@heroicons/react/24/outline";
 import { Settings as SettingsType } from "@/gotypes";
@@ -613,14 +623,19 @@ export default function Settings() {
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
               <Field>
-                <Label>Custom CSS</Label>
-                <Description>Inject custom CSS styles into the app UI.</Description>
-                <textarea
-                  value={(settings as any)?.CustomCSS || ""}
-                  onChange={(e) => handleChange("CustomCSS" as any, e.target.value)}
-                  className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
-                  placeholder="/* Your custom CSS here */"
-                />
+                <div className="flex items-start space-x-3">
+                  <PaintBrushIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                  <div className="w-full">
+                    <Label>Custom CSS</Label>
+                    <Description>Inject custom CSS styles into the app UI.</Description>
+                    <textarea
+                      value={(settings as any)?.CustomCSS || ""}
+                      onChange={(e) => handleChange("CustomCSS" as any, e.target.value)}
+                      className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
+                      placeholder="/* Your custom CSS here */"
+                    />
+                  </div>
+                </div>
               </Field>
             </div>
           </div>
@@ -631,6 +646,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <CodeBracketIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Show raw output toggle</Label>
                       <Description>Show a toggle on assistant messages to display raw text instead of formatted Markdown.</Description>
@@ -647,6 +663,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <TagIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Show model quantization</Label>
                       <Description>Display quantization level (e.g., Q4_K_M) in the model picker.</Description>
@@ -663,6 +680,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <TagIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Show model tags</Label>
                       <Description>Display parameter size and family badges in the model picker.</Description>
@@ -679,6 +697,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <SignalIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Show model load status</Label>
                       <Description>Display which models are currently loaded in memory in the model picker.</Description>
@@ -699,12 +718,9 @@ export default function Settings() {
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
               <Field>
-                <Label>Title Generation</Label>
-                <Description>Automatically generate titles for new chats.</Description>
-              </Field>
-              <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <SparklesIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Use LLM to generate titles</Label>
                       <Description>Send a secondary LLM request to generate a descriptive title.</Description>
@@ -721,6 +737,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <DocumentTextIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Use first line as title</Label>
                       <Description>Use the first line of the user's message as the chat title.</Description>
@@ -737,6 +754,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <ChatBubbleLeftRightIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Ask for confirmation</Label>
                       <Description>Show a confirmation dialog before applying a generated title.</Description>
@@ -751,14 +769,19 @@ export default function Settings() {
                 </div>
               </Field>
               <Field>
-                <Label>Custom title prompt</Label>
-                <Description>Custom prompt template. Use {"{{USER}}"} and {"{{ASSISTANT}}"} placeholders. Leave empty for default.</Description>
-                <textarea
-                  value={(settings as any)?.TitleGenerationPrompt || ""}
-                  onChange={(e) => handleChange("TitleGenerationPrompt" as any, e.target.value)}
-                  className="mt-2 w-full h-20 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm text-neutral-900 dark:text-neutral-100"
-                  placeholder="Generate a short title for this conversation..."
-                />
+                <div className="flex items-start space-x-3">
+                  <PencilSquareIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                  <div className="w-full">
+                    <Label>Custom title prompt</Label>
+                    <Description>Custom prompt template. Use {"{{USER}}"} and {"{{ASSISTANT}}"} placeholders. Leave empty for default.</Description>
+                    <textarea
+                      value={(settings as any)?.TitleGenerationPrompt || ""}
+                      onChange={(e) => handleChange("TitleGenerationPrompt" as any, e.target.value)}
+                      className="mt-2 w-full h-20 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm text-neutral-900 dark:text-neutral-100"
+                      placeholder="Generate a short title for this conversation..."
+                    />
+                  </div>
+                </div>
               </Field>
             </div>
           </div>
@@ -767,29 +790,39 @@ export default function Settings() {
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
               <Field>
-                <Label>PDF Processing Mode</Label>
-                <Description>Choose how PDF files are processed when attached to chats.</Description>
-                <div className="mt-2 flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="pdfMode"
-                      value="text"
-                      checked={((settings as any)?.PdfMode || "text") === "text"}
-                      onChange={() => handleChange("PdfMode" as any, "text")}
-                    />
-                    <span className="text-sm text-neutral-700 dark:text-neutral-300">Extract text (works with all models)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="pdfMode"
-                      value="images"
-                      checked={(settings as any)?.PdfMode === "images"}
-                      onChange={() => handleChange("PdfMode" as any, "images")}
-                    />
-                    <span className="text-sm text-neutral-700 dark:text-neutral-300">Render as images (requires vision model)</span>
-                  </label>
+                <div className="flex items-start space-x-3">
+                  <DocumentTextIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                  <div className="w-full">
+                    <Label>PDF Processing Mode</Label>
+                    <Description>Choose how PDF files are processed when attached to chats.</Description>
+                    <div className="mt-2 inline-flex w-full max-w-md rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-0.5">
+                      {([
+                        { value: "text", label: "Extract text", hint: "Works with all models" },
+                        { value: "images", label: "Render as images", hint: "Requires vision model" },
+                      ] as const).map((opt) => {
+                        const active = ((settings as any)?.PdfMode || "text") === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => handleChange("PdfMode" as any, opt.value)}
+                            className={`flex-1 rounded-md px-3 py-1.5 text-left transition-colors cursor-pointer ${
+                              active
+                                ? "bg-white dark:bg-neutral-700 shadow-sm"
+                                : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            }`}
+                          >
+                            <div className={`text-sm font-medium ${active ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-500 dark:text-neutral-400"}`}>
+                              {opt.label}
+                            </div>
+                            <div className="text-xs text-neutral-400 dark:text-neutral-500">
+                              {opt.hint}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </Field>
             </div>
@@ -799,24 +832,29 @@ export default function Settings() {
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
               <Field>
-                <Label>MCP Servers</Label>
-                <Description>Configure Model Context Protocol servers. Server connections will be available in a future update.</Description>
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setMcpDialogOpen(true)}
-                    className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
-                  >
-                    Add server
-                  </button>
+                <div className="flex items-start space-x-3">
+                  <ServerStackIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                  <div className="w-full">
+                    <Label>MCP Servers</Label>
+                    <Description>Configure Model Context Protocol servers. Server connections will be available in a future update.</Description>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setMcpDialogOpen(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
+                      >
+                        Add server
+                      </button>
+                    </div>
+                    <textarea
+                      value={(settings as any)?.McpServers || ""}
+                      onChange={(e) => handleChange("McpServers" as any, e.target.value)}
+                      className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
+                      placeholder='[{"id":"example","name":"Example","url":"https://example.com/mcp","enabled":false}]'
+                    />
+                    <Description>JSON array of MCP server configurations. Format: id, name, url, enabled, description.</Description>
+                  </div>
                 </div>
-                <textarea
-                  value={(settings as any)?.McpServers || ""}
-                  onChange={(e) => handleChange("McpServers" as any, e.target.value)}
-                  className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
-                  placeholder='[{"id":"example","name":"Example","url":"https://example.com/mcp","enabled":false}]'
-                />
-                <Description>JSON array of MCP server configurations. Format: id, name, url, enabled, description.</Description>
               </Field>
             </div>
           </div>
@@ -825,8 +863,13 @@ export default function Settings() {
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
               <Field>
-                <Label>Sampling Parameters</Label>
-                <Description>Control how the model generates responses. Leave at defaults for standard behavior.</Description>
+                <div className="flex items-start space-x-3">
+                  <AdjustmentsHorizontalIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                  <div>
+                    <Label>Sampling Parameters</Label>
+                    <Description>Control how the model generates responses. Leave at defaults for standard behavior.</Description>
+                  </div>
+                </div>
               </Field>
 
               {/* Temperature */}
@@ -973,6 +1016,7 @@ export default function Settings() {
               <Field>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start space-x-3 flex-1">
+                    <ChatBubbleLeftRightIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
                     <div>
                       <Label>Show system messages</Label>
                       <Description>Display system messages in the conversation view. Set per-chat using the + menu.</Description>

@@ -354,7 +354,7 @@ export class ModelCapabilitiesResponse {
     }
 }
 export class ChatEvent {
-    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created" | "stats";
+    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created" | "stats" | "title";
     content?: string;
     thinking?: string;
     thinkingTimeStart?: Date | undefined;
@@ -365,6 +365,7 @@ export class ChatEvent {
     toolResult?: boolean;
     toolResultData?: any;
     chatId?: string;
+    title?: string;
     evalCount?: number;
     evalDuration?: string;
     tokensPerSecond?: number;
@@ -383,6 +384,7 @@ export class ChatEvent {
         this.toolResult = source["toolResult"];
         this.toolResultData = source["toolResultData"];
         this.chatId = source["chatId"];
+        this.title = source["title"];
         this.evalCount = source["evalCount"];
         this.evalDuration = source["evalDuration"];
         this.tokensPerSecond = source["tokensPerSecond"];

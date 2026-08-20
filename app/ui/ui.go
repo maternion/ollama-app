@@ -1427,6 +1427,14 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 				chat.Title = title
 				if err := s.Store.SetChat(*chat); err != nil {
 					s.log().Error("failed to save chat title", "error", err)
+				} else {
+					// Notify the client so the sidebar updates immediately
+					json.NewEncoder(w).Encode(responses.ChatEvent{
+						EventName: "title",
+						ChatID:    &chat.ID,
+						Title:     &title,
+					})
+					flusher.Flush()
 				}
 			}
 		}

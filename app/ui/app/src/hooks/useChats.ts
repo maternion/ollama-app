@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { getChats, getChat, sendMessage, type ChatEventUnion } from "../api";
-import { Chat, ErrorEvent, Model } from "@/gotypes";
+import { Chat, ChatsResponse, ErrorEvent, Model } from "@/gotypes";
 import { Message } from "@/gotypes";
 import { useSelectedModel } from "./useSelectedModel";
 import { createQueryBatcher } from "./useQueryBatcher";
@@ -732,6 +732,26 @@ export const useSendMessage = (chatId: string) => {
               });
             }
             break;
+          case "title": {
+            // Server generated a title — update the chats list immediately
+            if (event.chatId && event.title) {
+              queryClient.setQueryData(
+                ["chats"],
+                (oldData: ChatsResponse | undefined) => {
+                  if (!oldData?.chatInfos) return oldData;
+                  return {
+                    ...oldData,
+                    chatInfos: oldData.chatInfos.map((chat) =>
+                      chat.id === event.chatId
+                        ? { ...chat, title: event.title! }
+                        : chat,
+                    ),
+                  };
+                },
+              );
+            }
+            break;
+          }
           case "stats": {
             hasServerStats = true;
             queryClient.setQueryData(
