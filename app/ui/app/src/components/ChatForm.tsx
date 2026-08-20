@@ -150,7 +150,7 @@ function ChatForm({
     thinkEnabled,
   } = settings;
   const { cloudDisabled } = useCloudStatus();
-  const { getChatSettings, updateChatSettings } = useChatSettings();
+  const { getChatSettings, updateChatSettings, migrateChatSettings } = useChatSettings();
   const chatSettings = getChatSettings(chatId);
   const systemMessage = chatSettings.systemMessage;
   const schemaActive = chatSettings.schemaActive;
@@ -551,8 +551,11 @@ function ChatForm({
       : supportsThinkToggling
         ? thinkEnabled
         : undefined;
+    // Cloud models don't support structured outputs — don't send format
     const useFormat =
-      schemaActive && jsonSchema ? jsonSchema : undefined;
+      schemaActive && jsonSchema && !selectedModel?.isCloud()
+        ? jsonSchema
+        : undefined;
     const useSystemMessage = systemMessage || undefined;
 
     if (onSubmit) {
@@ -574,6 +577,8 @@ function ChatForm({
         systemMessage: useSystemMessage,
         onChatEvent: (event) => {
           if (event.eventName === "chat_created" && event.chatId) {
+            // Move per-chat settings from "new" to the real chat id
+            migrateChatSettings(chatId, event.chatId);
             navigate({
               to: "/c/$chatId",
               params: {
@@ -699,6 +704,7 @@ function ChatForm({
     const { validFiles, errors } = await processFiles(Array.from(files), {
       hasVisionCapability,
       hasAudioCapability,
+      pdfAsImages: settings.pdfMode === "images",
     });
     handleFilesReceived(validFiles, errors);
 
@@ -970,6 +976,7 @@ function ChatForm({
               schema={jsonSchema}
               onSchemaChange={setJsonSchema}
               onSchemaToggle={toggleSchema}
+              isCloudModel={selectedModel?.isCloud() ?? false}
               onFileAttach={handleFilesReceived}
               hasVisionCapability={hasVisionCapability}
               hasAudioCapability={hasAudioCapability}

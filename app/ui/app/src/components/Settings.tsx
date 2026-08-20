@@ -26,6 +26,8 @@ import {
   updateSettings,
   getInferenceCompute,
 } from "@/api";
+import { McpServerAddDialog } from "@/components/McpServerAddDialog";
+import type { McpServerConfig } from "@/lib/recommended-mcp-servers";
 
 function AnimatedDots() {
   return (
@@ -57,6 +59,7 @@ export default function Settings() {
   } = useUser();
   const [isAwaitingConnection, setIsAwaitingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
   const {
     cloudDisabled,
@@ -214,7 +217,6 @@ export default function Settings() {
         AutoUpdateEnabled: false,
         CustomCSS: "",
         ShowRawOutput: false,
-        APIKey: "",
         ShowModelQuantization: false,
         ShowModelTags: false,
         TitleGenerationUseLLM: false,
@@ -236,6 +238,21 @@ export default function Settings() {
       });
       updateSettingsMutation.mutate(defaultSettings);
     }
+  };
+
+  const mcpServerList: McpServerConfig[] = (() => {
+    try {
+      const raw = (settings as any)?.McpServers || "";
+      const parsed = raw.trim() ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const handleAddMcpServer = (server: McpServerConfig) => {
+    const updated = [...mcpServerList, server];
+    handleChange("McpServers" as any, JSON.stringify(updated, null, 2));
   };
 
   const cloudOverriddenByEnv =
@@ -678,23 +695,6 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* API Key */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <Label>API Key</Label>
-                <Description>Bearer token for authenticating with the Ollama server. Leave empty for local servers.</Description>
-                <Input
-                  type="password"
-                  value={(settings as any)?.APIKey || ""}
-                  onChange={(e) => handleChange("APIKey" as any, e.target.value)}
-                  placeholder="Optional"
-                  className="mt-2 max-w-xs"
-                />
-              </Field>
-            </div>
-          </div>
-
           {/* Title Generation */}
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="space-y-4 p-4">
@@ -801,6 +801,15 @@ export default function Settings() {
               <Field>
                 <Label>MCP Servers</Label>
                 <Description>Configure Model Context Protocol servers. Server connections will be available in a future update.</Description>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMcpDialogOpen(true)}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
+                  >
+                    Add server
+                  </button>
+                </div>
                 <textarea
                   value={(settings as any)?.McpServers || ""}
                   onChange={(e) => handleChange("McpServers" as any, e.target.value)}
@@ -1047,6 +1056,13 @@ export default function Settings() {
           </Badge>
         </div>
       )}
+
+      <McpServerAddDialog
+        open={mcpDialogOpen}
+        existingServers={mcpServerList}
+        onAdd={handleAddMcpServer}
+        onClose={() => setMcpDialogOpen(false)}
+      />
     </div>
   );
 }

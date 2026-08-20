@@ -46,6 +46,8 @@ export interface ChatFormAddButtonProps {
   schema: string;
   onSchemaChange: (schema: string) => void;
   onSchemaToggle: () => void;
+  // Cloud models don't support structured outputs
+  isCloudModel: boolean;
 
   // File attachment
   onFileAttach: (
@@ -78,6 +80,7 @@ export const ChatFormAddButton = forwardRef<
     schema,
     onSchemaChange,
     onSchemaToggle,
+    isCloudModel,
     onFileAttach,
     hasVisionCapability,
     hasAudioCapability,
@@ -166,6 +169,7 @@ export const ChatFormAddButton = forwardRef<
     const { validFiles, errors } = await processFiles(files, {
       hasVisionCapability,
       hasAudioCapability,
+      pdfAsImages: pdfMode === "images",
     });
     onFileAttach(validFiles, errors);
   }
@@ -180,6 +184,7 @@ export const ChatFormAddButton = forwardRef<
     const { validFiles, errors } = await processFiles([file], {
       hasVisionCapability,
       hasAudioCapability,
+      pdfAsImages: pdfMode === "images",
     });
     onFileAttach(validFiles, errors);
   }
@@ -195,6 +200,7 @@ export const ChatFormAddButton = forwardRef<
     const { validFiles, errors } = await processFiles(files, {
       hasVisionCapability,
       hasAudioCapability,
+      pdfAsImages: pdfMode === "images",
     });
     onFileAttach(validFiles, errors);
   }
@@ -417,6 +423,12 @@ export const ChatFormAddButton = forwardRef<
           <button
             type="button"
             onClick={() => {
+              if (isCloudModel) {
+                setExpandedSection(
+                  expandedSection === "schema" ? null : "schema",
+                );
+                return;
+              }
               if (!schemaActive && !schema) {
                 onSchemaToggle();
               }
@@ -425,21 +437,35 @@ export const ChatFormAddButton = forwardRef<
               );
             }}
             className={`w-full text-left px-3 py-2 text-sm cursor-pointer flex items-center gap-2 transition-colors ${
-              schemaActive && schema
-                ? "text-[rgba(0,115,255,1)] dark:text-[rgba(70,155,255,1)] bg-blue-50 dark:bg-blue-900/20"
-                : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              isCloudModel
+                ? "text-neutral-400 dark:text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                : schemaActive && schema
+                  ? "text-[rgba(0,115,255,1)] dark:text-[rgba(70,155,255,1)] bg-blue-50 dark:bg-blue-900/20"
+                  : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
             }`}
           >
             <Braces className="w-4 h-4 flex-shrink-0" />
             <span className="flex-1">JSON schema</span>
-            {schemaActive && schema && <Check className="w-3.5 h-3.5" />}
+            {isCloudModel && (
+              <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                Local only
+              </span>
+            )}
+            {!isCloudModel && schemaActive && schema && <Check className="w-3.5 h-3.5" />}
             {expandedSection === "schema" ? (
               <ChevronDown className="w-3.5 h-3.5" />
             ) : (
               <ChevronRight className="w-3.5 h-3.5" />
             )}
           </button>
-          {expandedSection === "schema" && (
+          {expandedSection === "schema" && isCloudModel && (
+            <div className="px-3 pb-2 border-t border-neutral-100 dark:border-neutral-700">
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                Cloud models don't support structured outputs. Switch to a local model to use JSON schema.
+              </p>
+            </div>
+          )}
+          {expandedSection === "schema" && !isCloudModel && (
             <div className="px-3 pb-2 border-t border-neutral-100 dark:border-neutral-700">
               <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-2 mb-1">
                 Constrains output to this schema. Leave empty for unconstrained output.

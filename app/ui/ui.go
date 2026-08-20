@@ -114,7 +114,6 @@ type Server struct {
 	Agent        bool
 	WorkingDir   string
 	Dev          bool
-	apiKey       string
 
 	Updater             *updater.Updater
 	UpdateAvailableFunc func()
@@ -179,9 +178,6 @@ func (s *Server) ollamaProxy() http.Handler {
 				newProxy.Director = func(req *http.Request) {
 					originalDirector(req)
 					req.Host = target.Host
-					if s.apiKey != "" {
-						req.Header.Set("Authorization", "Bearer "+s.apiKey)
-					}
 					s.log().Debug("proxying request", "method", req.Method, "path", req.URL.Path, "target", target.Host)
 				}
 
@@ -1803,9 +1799,6 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) error {
 	if err := s.Store.SetSettings(settings); err != nil {
 		return fmt.Errorf("failed to save settings: %w", err)
 	}
-
-	// Update the server's API key for proxy injection
-	s.apiKey = settings.APIKey
 
 	// Handle auto-update toggle changes
 	if old.AutoUpdateEnabled != settings.AutoUpdateEnabled {

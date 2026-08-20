@@ -43,7 +43,6 @@ type SettingsUpdate = Partial<{
   AskForTitleConfirmation: boolean;
   PdfMode: string;
   CustomCSS: string;
-  APIKey: string;
   McpServers: string;
   SystemMessage: string;
   ShowSystemMessage: boolean;

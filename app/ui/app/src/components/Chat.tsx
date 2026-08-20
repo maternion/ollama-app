@@ -29,6 +29,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useSelectedModel } from "@/hooks/useSelectedModel";
 import { useUser } from "@/hooks/useUser";
 import { useHasVisionCapability } from "@/hooks/useModelCapabilities";
+import { useChatSettings } from "@/contexts/ChatSettingsContext";
 import { Message } from "@/gotypes";
 
 export default function Chat({ chatId }: { chatId: string }) {
@@ -37,6 +38,7 @@ export default function Chat({ chatId }: { chatId: string }) {
   const chatQuery = useChat(chatId === "new" ? "" : chatId);
   const chatErrorQuery = useChatError(chatId === "new" ? "" : chatId);
   const { selectedModel } = useSelectedModel(chatId);
+  const { migrateChatSettings } = useChatSettings();
   const { user } = useUser();
   const hasVisionCapability = useHasVisionCapability(selectedModel?.model);
   const shouldShowStaleDisplay = useShouldShowStaleDisplay(selectedModel);
@@ -160,6 +162,8 @@ export default function Chat({ chatId }: { chatId: string }) {
       systemMessage: options.systemMessage,
       onChatEvent: (event) => {
         if (event.eventName === "chat_created" && event.chatId) {
+          // Move per-chat settings from "new" to the real chat id
+          migrateChatSettings(chatId, event.chatId);
           navigate({
             to: "/c/$chatId",
             params: {

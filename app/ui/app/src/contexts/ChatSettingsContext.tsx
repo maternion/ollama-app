@@ -29,6 +29,8 @@ interface ChatSettingsContextType {
     updates: Partial<PerChatSettings>,
   ) => void;
   clearChatSettings: (chatId: string) => void;
+  // Moves settings from a temporary id (e.g. "new") to the real chat id
+  migrateChatSettings: (fromId: string, toId: string) => void;
 }
 
 const ChatSettingsContext = createContext<ChatSettingsContextType | undefined>(
@@ -63,8 +65,28 @@ export function ChatSettingsProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const migrateChatSettings = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setSettingsMap((prev) => {
+      const from = prev.get(fromId);
+      if (!from) return prev;
+      const next = new Map(prev);
+      next.delete(fromId);
+      // Don't clobber existing settings for the target chat
+      if (!next.has(toId)) {
+        next.set(toId, from);
+      }
+      return next;
+    });
+  };
+
   const contextValue = useMemo(
-    () => ({ getChatSettings, updateChatSettings, clearChatSettings }),
+    () => ({
+      getChatSettings,
+      updateChatSettings,
+      clearChatSettings,
+      migrateChatSettings,
+    }),
     [settingsMap],
   );
 
