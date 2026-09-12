@@ -1,6 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { getSettings } from "@/api";
-import { CURRENT_ONBOARDING_VERSION, homeChatId } from "@/lib/onboarding";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async ({ context }) => {
@@ -8,18 +7,13 @@ export const Route = createFileRoute("/")({
       queryKey: ["settings"],
       queryFn: getSettings,
     });
-    if (settingsData.settings.OnboardingVersion < CURRENT_ONBOARDING_VERSION) {
-      throw redirect({ to: "/onboarding" });
-    }
-
-    const chatId = homeChatId();
+    const chatId =
+      settingsData?.settings?.LastHomeView === "chat" ? "new" : "launch";
 
     throw redirect({
       to: "/c/$chatId",
       params: { chatId },
-      mask: {
-        to: "/",
-      },
+      mask: { to: "/" },
     });
   },
 });
