@@ -10,6 +10,7 @@ interface SettingsState {
   selectedModel: string;
   sidebarOpen: boolean;
   lastHomeView: string;
+  onboardingVersion: number;
   thinkEnabled: boolean;
   thinkLevel: string;
   showRawOutput: boolean;
@@ -34,6 +35,7 @@ type SettingsUpdate = Partial<{
   SelectedModel: string;
   SidebarOpen: boolean;
   LastHomeView: string;
+<<<<<<< HEAD
   ShowRawOutput: boolean;
   ShowModelQuantization: boolean;
   ShowModelTags: boolean;
@@ -54,6 +56,9 @@ type SettingsUpdate = Partial<{
   RepeatPenalty: number;
   PresencePenalty: number;
   FrequencyPenalty: number;
+=======
+  OnboardingVersion: number;
+>>>>>>> v0.34.0
 }>;
 
 export function useSettings() {
@@ -83,6 +88,7 @@ export function useSettings() {
       thinkLevel: settingsData?.settings?.ThinkLevel ?? "none",
       selectedModel: settingsData?.settings?.SelectedModel ?? "",
       sidebarOpen: settingsData?.settings?.SidebarOpen ?? false,
+<<<<<<< HEAD
       lastHomeView: settingsData?.settings?.LastHomeView ?? "launch",
       showRawOutput: (settingsData?.settings as any)?.ShowRawOutput ?? false,
       showModelQuantization:
@@ -101,6 +107,10 @@ export function useSettings() {
       showSystemMessage: (settingsData?.settings as any)?.ShowSystemMessage ?? false,
       showModelLoadStatus:
         (settingsData?.settings as any)?.ShowModelLoadStatus ?? false,
+=======
+      lastHomeView: settingsData?.settings?.LastHomeView ?? "chat",
+      onboardingVersion: settingsData?.settings?.OnboardingVersion ?? 0,
+>>>>>>> v0.34.0
     }),
     [settingsData?.settings],
   );

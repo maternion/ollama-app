@@ -14,7 +14,7 @@ import (
 
 // currentSchemaVersion defines the current database schema version.
 // Increment this when making schema changes that require migrations.
-const currentSchemaVersion = 19
+const currentSchemaVersion = 20
 
 // database wraps the SQLite connection.
 // SQLite handles its own locking for concurrent access:
@@ -82,7 +82,8 @@ func (db *database) init() error {
 		websearch_enabled BOOLEAN NOT NULL DEFAULT 0,
 		selected_model TEXT NOT NULL DEFAULT '',
 		sidebar_open BOOLEAN NOT NULL DEFAULT 0,
-		last_home_view TEXT NOT NULL DEFAULT 'launch',
+		last_home_view TEXT NOT NULL DEFAULT 'chat',
+		onboarding_version INTEGER NOT NULL DEFAULT 0,
 		think_enabled BOOLEAN NOT NULL DEFAULT 0,
 		think_level TEXT NOT NULL DEFAULT '',
 		cloud_setting_migrated BOOLEAN NOT NULL DEFAULT 0,
@@ -109,6 +110,8 @@ func (db *database) init() error {
 		presence_penalty REAL NOT NULL DEFAULT 0.0,
 		frequency_penalty REAL NOT NULL DEFAULT 0.0,
 		show_model_load_status BOOLEAN NOT NULL DEFAULT 0,
+		claude_desktop_used BOOLEAN NOT NULL DEFAULT 0,
+		codex_desktop_used BOOLEAN NOT NULL DEFAULT 0,
 		schema_version INTEGER NOT NULL DEFAULT %d
 	);
 
@@ -296,11 +299,13 @@ func (db *database) migrate() error {
 			}
 			version = 16
 		case 16:
+			// Existing users should not be shown onboarding after an upgrade.
 			if err := db.migrateV16ToV17(); err != nil {
 				return fmt.Errorf("migrate v16 to v17: %w", err)
 			}
 			version = 17
 		case 17:
+			// Remember that Claude Desktop has been connected at least once.
 			if err := db.migrateV17ToV18(); err != nil {
 				return fmt.Errorf("migrate v17 to v18: %w", err)
 			}
@@ -310,6 +315,14 @@ func (db *database) migrate() error {
 				return fmt.Errorf("migrate v18 to v19: %w", err)
 			}
 			version = 19
+		case 19:
+			// add fork feature columns (custom CSS, raw output, API key, model
+			// display, title generation, MCP servers, PDF mode, system message,
+			// sampling parameters, model load status)
+			if err := db.migrateV19ToV20(); err != nil {
+				return fmt.Errorf("migrate v19 to v20: %w", err)
+			}
+			version = 20
 		default:
 			// If we have a version we don't recognize, just set it to current
 			// This might happen during development
@@ -566,7 +579,7 @@ func (db *database) migrateV14ToV15() error {
 
 // migrateV15ToV16 adds the last_home_view column to the settings table
 func (db *database) migrateV15ToV16() error {
-	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN last_home_view TEXT NOT NULL DEFAULT 'launch'`)
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN last_home_view TEXT NOT NULL DEFAULT 'chat'`)
 	if err != nil && !duplicateColumnError(err) {
 		return fmt.Errorf("add last_home_view column: %w", err)
 	}
@@ -579,93 +592,28 @@ func (db *database) migrateV15ToV16() error {
 	return nil
 }
 
-// migrateV16ToV17 adds eval_count, tokens_per_second, and eval_duration columns to the messages table
+// migrateV16ToV17 adds versioned onboarding state. The schema default stays at
+// zero for genuinely new installs, while all existing rows are marked complete
+// and moved off the retired launch home view.
 func (db *database) migrateV16ToV17() error {
-	_, err := db.conn.Exec(`ALTER TABLE messages ADD COLUMN eval_count INTEGER`)
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN onboarding_version INTEGER NOT NULL DEFAULT 0`)
 	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add eval_count column: %w", err)
+		return fmt.Errorf("add onboarding_version column: %w", err)
 	}
 
-	_, err = db.conn.Exec(`ALTER TABLE messages ADD COLUMN tokens_per_second REAL`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add tokens_per_second column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE messages ADD COLUMN eval_duration TEXT`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add eval_duration column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 17`)
+	_, err = db.conn.Exec(`UPDATE settings SET onboarding_version = 1, last_home_view = 'chat', schema_version = 17`)
 	if err != nil {
-		return fmt.Errorf("update schema version: %w", err)
+		return fmt.Errorf("complete onboarding for existing users: %w", err)
 	}
 
 	return nil
 }
 
-// migrateV17ToV18 adds custom CSS, raw output, API key, model display, title generation, MCP servers, and PDF mode columns to the settings table
+// migrateV17ToV18 adds durable Claude Desktop integration history.
 func (db *database) migrateV17ToV18() error {
-	// Custom CSS
-	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN custom_css TEXT NOT NULL DEFAULT '';`)
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN claude_desktop_used BOOLEAN NOT NULL DEFAULT 0`)
 	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add custom_css column: %w", err)
-	}
-
-	// Show raw output toggle
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_raw_output BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add show_raw_output column: %w", err)
-	}
-
-	// API key
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN api_key TEXT NOT NULL DEFAULT '';`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add api_key column: %w", err)
-	}
-
-	// Model display settings
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_model_quantization BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add show_model_quantization column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_model_tags BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add show_model_tags column: %w", err)
-	}
-
-	// Title generation settings
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN title_generation_use_llm BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add title_generation_use_llm column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN title_generation_use_first_line BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add title_generation_use_first_line column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN title_generation_prompt TEXT NOT NULL DEFAULT '';`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add title_generation_prompt column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN ask_for_title_confirmation BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add ask_for_title_confirmation column: %w", err)
-	}
-
-	// MCP servers config
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN mcp_servers TEXT NOT NULL DEFAULT '';`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add mcp_servers column: %w", err)
-	}
-
-	// PDF mode
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN pdf_mode TEXT NOT NULL DEFAULT 'text';`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add pdf_mode column: %w", err)
+		return fmt.Errorf("add claude_desktop_used column: %w", err)
 	}
 
 	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 18`)
@@ -676,59 +624,64 @@ func (db *database) migrateV17ToV18() error {
 	return nil
 }
 
-// migrateV18ToV19 adds system message, sampling parameters, and model load status columns to the settings table
+// migrateV18ToV19 records successful ChatGPT integration use.
 func (db *database) migrateV18ToV19() error {
-	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN system_message TEXT NOT NULL DEFAULT '';`)
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN codex_desktop_used BOOLEAN NOT NULL DEFAULT 0`)
 	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add system_message column: %w", err)
+		return fmt.Errorf("add codex_desktop_used column: %w", err)
 	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_system_message BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add show_system_message column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN temperature REAL NOT NULL DEFAULT 0.8;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add temperature column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN top_k INTEGER NOT NULL DEFAULT 40;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add top_k column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN top_p REAL NOT NULL DEFAULT 0.9;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add top_p column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN min_p REAL NOT NULL DEFAULT 0.0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add min_p column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN repeat_penalty REAL NOT NULL DEFAULT 1.0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add repeat_penalty column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN presence_penalty REAL NOT NULL DEFAULT 0.0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add presence_penalty column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN frequency_penalty REAL NOT NULL DEFAULT 0.0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add frequency_penalty column: %w", err)
-	}
-
-	_, err = db.conn.Exec(`ALTER TABLE settings ADD COLUMN show_model_load_status BOOLEAN NOT NULL DEFAULT 0;`)
-	if err != nil && !duplicateColumnError(err) {
-		return fmt.Errorf("add show_model_load_status column: %w", err)
-	}
-
 	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 19`)
+	return err
+}
+
+// migrateV19ToV20 adds fork feature columns: custom CSS, raw output,
+// API key, model display, title generation, MCP servers, PDF mode, system
+// message, sampling parameters, and model load status.
+func (db *database) migrateV19ToV20() error {
+	// Token stats columns (fork feature, originally added in fork v16→v17)
+	msgStmts := []struct{ col, typ string }{
+		{"eval_count", "INTEGER"},
+		{"tokens_per_second", "REAL"},
+		{"eval_duration", "TEXT"},
+	}
+	for _, stmt := range msgStmts {
+		_, err := db.conn.Exec("ALTER TABLE messages ADD COLUMN " + stmt.col + " " + stmt.typ)
+		if err != nil && !duplicateColumnError(err) {
+			return fmt.Errorf("add messages.%s column: %w", stmt.col, err)
+		}
+	}
+
+	stmts := []struct{ col, typ string }{
+		{"custom_css", "TEXT NOT NULL DEFAULT ''"},
+		{"show_raw_output", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"api_key", "TEXT NOT NULL DEFAULT ''"},
+		{"show_model_quantization", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"show_model_tags", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"title_generation_use_llm", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"title_generation_use_first_line", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"title_generation_prompt", "TEXT NOT NULL DEFAULT ''"},
+		{"ask_for_title_confirmation", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"mcp_servers", "TEXT NOT NULL DEFAULT ''"},
+		{"pdf_mode", "TEXT NOT NULL DEFAULT 'text'"},
+		{"system_message", "TEXT NOT NULL DEFAULT ''"},
+		{"show_system_message", "BOOLEAN NOT NULL DEFAULT 0"},
+		{"temperature", "REAL NOT NULL DEFAULT 0.8"},
+		{"top_k", "INTEGER NOT NULL DEFAULT 40"},
+		{"top_p", "REAL NOT NULL DEFAULT 0.9"},
+		{"min_p", "REAL NOT NULL DEFAULT 0.0"},
+		{"repeat_penalty", "REAL NOT NULL DEFAULT 1.0"},
+		{"presence_penalty", "REAL NOT NULL DEFAULT 0.0"},
+		{"frequency_penalty", "REAL NOT NULL DEFAULT 0.0"},
+		{"show_model_load_status", "BOOLEAN NOT NULL DEFAULT 0"},
+	}
+	for _, stmt := range stmts {
+		_, err := db.conn.Exec("ALTER TABLE settings ADD COLUMN " + stmt.col + " " + stmt.typ + ";")
+		if err != nil && !duplicateColumnError(err) {
+			return fmt.Errorf("add %s column: %w", stmt.col, err)
+		}
+	}
+
+	_, err := db.conn.Exec(`UPDATE settings SET schema_version = 20`)
 	if err != nil {
 		return fmt.Errorf("update schema version: %w", err)
 	}
@@ -1412,9 +1365,10 @@ func (db *database) getSettings() (Settings, error) {
 	var s Settings
 
 	err := db.conn.QueryRow(`
-		SELECT expose, survey, browser, models, agent, tools, working_dir, context_length, turbo_enabled, websearch_enabled, selected_model, sidebar_open, last_home_view, think_enabled, think_level, auto_update_enabled, custom_css, show_raw_output, api_key, show_model_quantization, show_model_tags, title_generation_use_llm, title_generation_use_first_line, title_generation_prompt, ask_for_title_confirmation, mcp_servers, pdf_mode, system_message, show_system_message, temperature, top_k, top_p, min_p, repeat_penalty, presence_penalty, frequency_penalty, show_model_load_status
+		SELECT expose, survey, browser, models, agent, tools, working_dir, context_length, turbo_enabled, websearch_enabled, selected_model, sidebar_open, last_home_view, onboarding_version, think_enabled, think_level, auto_update_enabled, custom_css, show_raw_output, api_key, show_model_quantization, show_model_tags, title_generation_use_llm, title_generation_use_first_line, title_generation_prompt, ask_for_title_confirmation, mcp_servers, pdf_mode, system_message, show_system_message, temperature, top_k, top_p, min_p, repeat_penalty, presence_penalty, frequency_penalty, show_model_load_status, claude_desktop_used, codex_desktop_used
 		FROM settings
-	`).Scan(&s.Expose, &s.Survey, &s.Browser, &s.Models, &s.Agent, &s.Tools, &s.WorkingDir, &s.ContextLength, &s.TurboEnabled, &s.WebSearchEnabled, &s.SelectedModel, &s.SidebarOpen, &s.LastHomeView, &s.ThinkEnabled, &s.ThinkLevel, &s.AutoUpdateEnabled, &s.CustomCSS, &s.ShowRawOutput, &s.APIKey, &s.ShowModelQuantization, &s.ShowModelTags, &s.TitleGenerationUseLLM, &s.TitleGenerationUseFirstLine, &s.TitleGenerationPrompt, &s.AskForTitleConfirmation, &s.McpServers, &s.PdfMode, &s.SystemMessage, &s.ShowSystemMessage, &s.Temperature, &s.TopK, &s.TopP, &s.MinP, &s.RepeatPenalty, &s.PresencePenalty, &s.FrequencyPenalty, &s.ShowModelLoadStatus)
+	
+	`).Scan(&s.Expose, &s.Survey, &s.Browser, &s.Models, &s.Agent, &s.Tools, &s.WorkingDir, &s.ContextLength, &s.TurboEnabled, &s.WebSearchEnabled, &s.SelectedModel, &s.SidebarOpen, &s.LastHomeView, &s.OnboardingVersion, &s.ThinkEnabled, &s.ThinkLevel, &s.AutoUpdateEnabled, &s.CustomCSS, &s.ShowRawOutput, &s.APIKey, &s.ShowModelQuantization, &s.ShowModelTags, &s.TitleGenerationUseLLM, &s.TitleGenerationUseFirstLine, &s.TitleGenerationPrompt, &s.AskForTitleConfirmation, &s.McpServers, &s.PdfMode, &s.SystemMessage, &s.ShowSystemMessage, &s.Temperature, &s.TopK, &s.TopP, &s.MinP, &s.RepeatPenalty, &s.PresencePenalty, &s.FrequencyPenalty, &s.ShowModelLoadStatus, &s.ClaudeDesktopUsed, &s.CodexDesktopUsed)
 	if err != nil {
 		return Settings{}, fmt.Errorf("get settings: %w", err)
 	}
@@ -1424,32 +1378,23 @@ func (db *database) getSettings() (Settings, error) {
 
 func (db *database) setSettings(s Settings) error {
 	lastHomeView := strings.ToLower(strings.TrimSpace(s.LastHomeView))
-	validLaunchView := map[string]struct{}{
-		"launch":    {},
-		"openclaw":  {},
-		"claude":    {},
-		"hermes":    {},
-		"codex":     {},
-		"codex-app": {},
-		"copilot":   {},
-		"opencode":  {},
-		"droid":     {},
-		"pi":        {},
-	}
 	if lastHomeView != "chat" {
-		if _, ok := validLaunchView[lastHomeView]; !ok {
-			lastHomeView = "launch"
-		}
+		lastHomeView = "chat"
 	}
 
 	_, err := db.conn.Exec(`
 		UPDATE settings
-		SET expose = ?, survey = ?, browser = ?, models = ?, agent = ?, tools = ?, working_dir = ?, context_length = ?, turbo_enabled = ?, websearch_enabled = ?, selected_model = ?, sidebar_open = ?, last_home_view = ?, think_enabled = ?, think_level = ?, auto_update_enabled = ?, custom_css = ?, show_raw_output = ?, api_key = ?, show_model_quantization = ?, show_model_tags = ?, title_generation_use_llm = ?, title_generation_use_first_line = ?, title_generation_prompt = ?, ask_for_title_confirmation = ?, mcp_servers = ?, pdf_mode = ?, system_message = ?, show_system_message = ?, temperature = ?, top_k = ?, top_p = ?, min_p = ?, repeat_penalty = ?, presence_penalty = ?, frequency_penalty = ?, show_model_load_status = ?
-	`, s.Expose, s.Survey, s.Browser, s.Models, s.Agent, s.Tools, s.WorkingDir, s.ContextLength, s.TurboEnabled, s.WebSearchEnabled, s.SelectedModel, s.SidebarOpen, lastHomeView, s.ThinkEnabled, s.ThinkLevel, s.AutoUpdateEnabled, s.CustomCSS, s.ShowRawOutput, s.APIKey, s.ShowModelQuantization, s.ShowModelTags, s.TitleGenerationUseLLM, s.TitleGenerationUseFirstLine, s.TitleGenerationPrompt, s.AskForTitleConfirmation, s.McpServers, s.PdfMode, s.SystemMessage, s.ShowSystemMessage, s.Temperature, s.TopK, s.TopP, s.MinP, s.RepeatPenalty, s.PresencePenalty, s.FrequencyPenalty, s.ShowModelLoadStatus)
+		SET expose = ?, survey = ?, browser = ?, models = ?, agent = ?, tools = ?, working_dir = ?, context_length = ?, turbo_enabled = ?, websearch_enabled = ?, selected_model = ?, sidebar_open = ?, last_home_view = ?, onboarding_version = ?, think_enabled = ?, think_level = ?, auto_update_enabled = ?, custom_css = ?, show_raw_output = ?, api_key = ?, show_model_quantization = ?, show_model_tags = ?, title_generation_use_llm = ?, title_generation_use_first_line = ?, title_generation_prompt = ?, ask_for_title_confirmation = ?, mcp_servers = ?, pdf_mode = ?, system_message = ?, show_system_message = ?, temperature = ?, top_k = ?, top_p = ?, min_p = ?, repeat_penalty = ?, presence_penalty = ?, frequency_penalty = ?, show_model_load_status = ?, claude_desktop_used = ?
+	`, s.Expose, s.Survey, s.Browser, s.Models, s.Agent, s.Tools, s.WorkingDir, s.ContextLength, s.TurboEnabled, s.WebSearchEnabled, s.SelectedModel, s.SidebarOpen, lastHomeView, s.OnboardingVersion, s.ThinkEnabled, s.ThinkLevel, s.AutoUpdateEnabled, s.CustomCSS, s.ShowRawOutput, s.APIKey, s.ShowModelQuantization, s.ShowModelTags, s.TitleGenerationUseLLM, s.TitleGenerationUseFirstLine, s.TitleGenerationPrompt, s.AskForTitleConfirmation, s.McpServers, s.PdfMode, s.SystemMessage, s.ShowSystemMessage, s.Temperature, s.TopK, s.TopP, s.MinP, s.RepeatPenalty, s.PresencePenalty, s.FrequencyPenalty, s.ShowModelLoadStatus, s.ClaudeDesktopUsed)
 	if err != nil {
 		return fmt.Errorf("set settings: %w", err)
 	}
 	return nil
+}
+
+func (db *database) markCodexDesktopUsed() error {
+	_, err := db.conn.Exec(`UPDATE settings SET codex_desktop_used = 1`)
+	return err
 }
 
 func (db *database) isCloudSettingMigrated() (bool, error) {

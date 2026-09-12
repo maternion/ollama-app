@@ -80,6 +80,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"time"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -199,7 +200,7 @@ func maybeMoveAndRestart() appMove {
 	return CannotMove
 }
 
-func handleExistingInstance(startHidden bool) {
+func handleExistingInstance(startHidden bool) bool {
 	lockDir := os.Getenv("XDG_RUNTIME_DIR")
 	if lockDir == "" {
 		lockDir = filepath.Join(os.TempDir(), fmt.Sprintf("ollama-%d", os.Getuid()))
@@ -224,6 +225,8 @@ func handleExistingInstance(startHidden bool) {
 	if err := os.WriteFile(lockFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
 		slog.Warn("failed to write lock file", "error", err)
 	}
+
+	return true
 }
 
 func ollamaPidRunning(pid int) bool {
@@ -259,7 +262,24 @@ func UpdateAvailable(ver string) error {
 	return nil
 }
 
-func osRun(shutdown func(), hasCompletedFirstRun, startHidden bool) {
+// UIRunShared navigates an existing webview window to path, or opens one.
+func UIRunShared(path string) {
+	if wv.webview != nil {
+		showWindow(wv.webview.Window())
+	} else {
+		wv.Run(path)
+	}
+}
+
+func openUI(path string) {
+	go func() {
+		// The GTK main loop may not be running yet during startup; wait for it.
+		time.Sleep(100 * time.Millisecond)
+		UIRunShared(path)
+	}()
+}
+
+func osRun(shutdown func(), hasCompletedFirstRun, startHidden, showOnboarding bool, urlSchemeRequest string) {
 	app.shutdown = shutdown
 
 	if C.gtk_init_check_wrapper(nil, nil) == 0 {
@@ -316,7 +336,15 @@ func osRun(shutdown func(), hasCompletedFirstRun, startHidden bool) {
 		}
 	}()
 
-	if !startHidden {
+	if urlSchemeRequest != "" {
+		// First-instance URL scheme requests are handled once the UI
+		// dependencies are initialized.
+		if err := dispatchURLSchemeRequest(urlSchemeRequest, handleConnectURLScheme, func() {
+			openUI("/")
+		}); err != nil {
+			slog.Error("failed to parse URL scheme request", "url", urlSchemeRequest, "error", err)
+		}
+	} else if !startHidden {
 		ptr := wv.Run("/")
 		if ptr != nil {
 			C.connect_focus_signals(ptr)
@@ -511,3 +539,8 @@ func checkAndHandleExistingInstance(urlSchemeRequest string) bool {
 	os.Exit(0)
 	return true
 }
+
+// setOnboardingWindowStyle adjusts window chrome for the onboarding flow.
+// On Linux the standard window decorations work for both flows, so this is
+// a no-op.
+func setOnboardingWindowStyle(_ unsafe.Pointer, _ bool) {}
