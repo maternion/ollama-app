@@ -80,12 +80,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"time"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/ollama/ollama/app/linuxtray"
@@ -377,6 +377,13 @@ func installAutostart() {
 		return
 	}
 
+	// Skip when running inside an AppImage — the install script handles
+	// autostart with a stable path. AppImage temp paths won't survive reboot.
+	if strings.Contains(exe, "/.mount_ollama") || strings.Contains(exe, "/tmp/.mount_") {
+		slog.Debug("running inside AppImage, skipping autostart creation", "exe", exe)
+		return
+	}
+
 	desktopEntry := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=Ollama\nComment=Run large language models locally\nExec=%s hidden\nIcon=ollama\nTerminal=false\nCategories=Development;X-AI;\nMimeType=x-scheme-handler/ollama;\nStartupWMClass=ollama\n", exe)
 
 	if err := os.MkdirAll(autostartDir, 0o755); err != nil {
@@ -399,6 +406,15 @@ func installDesktopEntry() {
 	exe, err := os.Executable()
 	if err != nil {
 		slog.Warn("unable to get executable path for desktop entry", "error", err)
+		return
+	}
+
+	// When running inside an AppImage, os.Executable() resolves to a
+	// temporary /tmp/.mount_ollamaXXX/ path that won't exist after the
+	// AppImage exits. Skip self-registration in that case — the install
+	// script or AppImage launch mechanism handles desktop integration.
+	if strings.Contains(exe, "/.mount_ollama") || strings.Contains(exe, "/tmp/.mount_") {
+		slog.Debug("running inside AppImage, skipping desktop entry creation", "exe", exe)
 		return
 	}
 

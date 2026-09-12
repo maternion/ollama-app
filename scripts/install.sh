@@ -213,6 +213,15 @@ configure_app() {
     pkill -x ollama-app 2>/dev/null || true
     sleep 1
 
+    # Remove stale desktop entries and autostart files left by previous
+    # AppImage runs (they point to temporary /tmp/.mount_ paths that no
+    # longer exist after the AppImage is unmounted).
+    status "Cleaning up stale desktop entries..."
+    rm -f "$HOME/.local/share/applications/com.ollama.Ollama.desktop" 2>/dev/null || true
+    rm -f "$HOME/.config/autostart/ollama.desktop" 2>/dev/null || true
+    $SUDO rm -f /usr/share/applications/com.ollama.Ollama.desktop 2>/dev/null || true
+    $SUDO rm -f /etc/xdg/autostart/ollama.desktop 2>/dev/null || true
+
     $SUDO mkdir -p /opt/ollama
     $SUDO cp "$TEMP_DIR/ollama-app.AppImage" /opt/ollama/ollama-app.AppImage
     $SUDO chmod +x /opt/ollama/ollama-app.AppImage
