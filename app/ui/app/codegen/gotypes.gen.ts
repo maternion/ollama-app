@@ -116,9 +116,6 @@ export class Message {
     updated_at: Time;
     thinkingTimeStart?: Date | undefined;
     thinkingTimeEnd?: Date | undefined;
-    evalCount?: number | undefined;
-    tokensPerSecond?: number | undefined;
-    evalDuration?: string | undefined;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -136,9 +133,6 @@ export class Message {
         this.updated_at = this.convertValues(source["updated_at"], Time);
         this.thinkingTimeStart = source["thinkingTimeStart"] && new Date(source["thinkingTimeStart"]);
         this.thinkingTimeEnd = source["thinkingTimeEnd"] && new Date(source["thinkingTimeEnd"]);
-        this.evalCount = source["evalCount"];
-        this.tokensPerSecond = source["tokensPerSecond"];
-        this.evalDuration = source["evalDuration"];
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -219,40 +213,16 @@ export class ChatResponse {
 	    return a;
 	}
 }
-export class ModelDetails {
-    parent_model: string;
-    format: string;
-    family: string;
-    families: string[];
-    parameter_size: string;
-    quantization_level: string;
-    context_length?: number;
-    embedding_length?: number;
-
-    constructor(source: any = {}) {
-        if ('string' === typeof source) source = JSON.parse(source);
-        this.parent_model = source["parent_model"];
-        this.format = source["format"];
-        this.family = source["family"];
-        this.families = source["families"];
-        this.parameter_size = source["parameter_size"];
-        this.quantization_level = source["quantization_level"];
-        this.context_length = source["context_length"];
-        this.embedding_length = source["embedding_length"];
-    }
-}
 export class Model {
     model: string;
     digest?: string;
     modified_at?: Time;
-    details?: ModelDetails;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
         this.model = source["model"];
         this.digest = source["digest"];
         this.modified_at = this.convertValues(source["modified_at"], Time);
-        this.details = this.convertValues(source["details"], ModelDetails);
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -354,7 +324,7 @@ export class ModelCapabilitiesResponse {
     }
 }
 export class ChatEvent {
-    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created" | "stats" | "title";
+    eventName: "chat" | "thinking" | "assistant_with_tools" | "tool_call" | "tool" | "tool_result" | "done" | "chat_created";
     content?: string;
     thinking?: string;
     thinkingTimeStart?: Date | undefined;
@@ -365,10 +335,6 @@ export class ChatEvent {
     toolResult?: boolean;
     toolResultData?: any;
     chatId?: string;
-    title?: string;
-    evalCount?: number;
-    evalDuration?: string;
-    tokensPerSecond?: number;
     toolState?: any;
 
     constructor(source: any = {}) {
@@ -384,10 +350,6 @@ export class ChatEvent {
         this.toolResult = source["toolResult"];
         this.toolResultData = source["toolResultData"];
         this.chatId = source["chatId"];
-        this.title = source["title"];
-        this.evalCount = source["evalCount"];
-        this.evalDuration = source["evalDuration"];
-        this.tokensPerSecond = source["tokensPerSecond"];
         this.toolState = source["toolState"];
     }
 
@@ -453,7 +415,10 @@ export class Settings {
     SelectedModel: string;
     SidebarOpen: boolean;
     LastHomeView: string;
+    OnboardingVersion: number;
     AutoUpdateEnabled: boolean;
+    ClaudeDesktopUsed: boolean;
+    CodexDesktopUsed: boolean;
     CustomCSS: string;
     ShowRawOutput: boolean;
     APIKey: string;
@@ -493,7 +458,10 @@ export class Settings {
         this.SelectedModel = source["SelectedModel"];
         this.SidebarOpen = source["SidebarOpen"];
         this.LastHomeView = source["LastHomeView"];
+        this.OnboardingVersion = source["OnboardingVersion"];
         this.AutoUpdateEnabled = source["AutoUpdateEnabled"];
+        this.ClaudeDesktopUsed = source["ClaudeDesktopUsed"];
+        this.CodexDesktopUsed = source["CodexDesktopUsed"];
         this.CustomCSS = source["CustomCSS"];
         this.ShowRawOutput = source["ShowRawOutput"];
         this.APIKey = source["APIKey"];
@@ -592,8 +560,6 @@ export class ChatRequest {
     file_tools?: boolean;
     forceUpdate?: boolean;
     think?: any;
-    format?: number[];
-    system_message?: string;
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -605,8 +571,6 @@ export class ChatRequest {
         this.file_tools = source["file_tools"];
         this.forceUpdate = source["forceUpdate"];
         this.think = source["think"];
-        this.format = source["format"];
-        this.system_message = source["system_message"];
     }
 
 	convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -632,24 +596,6 @@ export class Error {
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
-        this.error = source["error"];
-    }
-}
-export class UpdateInfo {
-    version?: string;
-    downloadUrl?: string;
-    downloading: boolean;
-    downloaded: boolean;
-    downloadBytes?: number;
-    error?: string;
-
-    constructor(source: any = {}) {
-        if ('string' === typeof source) source = JSON.parse(source);
-        this.version = source["version"];
-        this.downloadUrl = source["downloadUrl"];
-        this.downloading = source["downloading"];
-        this.downloaded = source["downloaded"];
-        this.downloadBytes = source["downloadBytes"];
         this.error = source["error"];
     }
 }

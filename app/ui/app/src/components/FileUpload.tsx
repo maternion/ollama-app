@@ -8,7 +8,6 @@ import {
 import { DocumentPlusIcon } from "@heroicons/react/24/outline";
 import type { Model } from "@/gotypes";
 import { processFiles as processFilesUtil } from "@/utils/fileValidation";
-import { useSettings } from "@/hooks/useSettings";
 
 interface FileUploadProps {
   children: ReactNode;
@@ -33,8 +32,6 @@ export function FileUpload({
   allowedExtensions,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const { settings } = useSettings();
-  const pdfAsImages = settings.pdfMode === "images";
   // Counter to track drag enter/leave events across all child elements
   // Prevents flickering when dragging over child elements within the component
   const dragCounter = useRef(0);
@@ -115,7 +112,6 @@ export function FileUpload({
         hasVisionCapability,
         selectedModel,
         customValidator: validateFile,
-        pdfAsImages,
       });
 
       // Send processed files and errors back to parent
@@ -130,7 +126,6 @@ export function FileUpload({
       allowedExtensions,
       maxFileSize,
       validateFile,
-      pdfAsImages,
       onFilesAdded,
     ],
   );

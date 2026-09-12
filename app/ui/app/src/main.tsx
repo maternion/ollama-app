@@ -1,18 +1,10 @@
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { routeTree } from "./routeTree.gen";
 import { fetchUser } from "./api";
 import { StreamingProvider } from "./contexts/StreamingContext";
-import { DraftProvider } from "./contexts/DraftContext";
-import { ChatSettingsProvider } from "./contexts/ChatSettingsContext";
-import { useCustomCSS } from "./hooks/useCustomCSS";
-
-function CustomCSSInjector({ children }: { children: ReactNode }) {
-  useCustomCSS();
-  return <>{children}</>;
-}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,13 +42,7 @@ if (!rootElement.innerHTML) {
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <StreamingProvider>
-          <DraftProvider>
-            <ChatSettingsProvider>
-              <CustomCSSInjector>
-                <RouterProvider router={router} />
-              </CustomCSSInjector>
-            </ChatSettingsProvider>
-          </DraftProvider>
+          <RouterProvider router={router} />
         </StreamingProvider>
       </QueryClientProvider>
     </StrictMode>,

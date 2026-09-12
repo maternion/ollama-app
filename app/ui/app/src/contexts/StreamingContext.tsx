@@ -18,8 +18,6 @@ interface StreamingContextType {
   setAbortControllers: Dispatch<SetStateAction<Map<string, AbortController>>>;
   downloadProgress: Map<string, DownloadEvent>;
   setDownloadProgress: Dispatch<SetStateAction<Map<string, DownloadEvent>>>;
-  pendingMessages: Map<string, string>;
-  setPendingMessages: Dispatch<SetStateAction<Map<string, string>>>;
 }
 
 const StreamingContext = createContext<StreamingContextType | undefined>(
@@ -37,9 +35,6 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
   const [downloadProgress, setDownloadProgress] = useState<
     Map<string, DownloadEvent>
   >(new Map());
-  const [pendingMessages, setPendingMessages] = useState<
-    Map<string, string>
-  >(new Map());
 
   const contextValue = useMemo(
     () => ({
@@ -51,10 +46,8 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       setAbortControllers,
       downloadProgress,
       setDownloadProgress,
-      pendingMessages,
-      setPendingMessages,
     }),
-    [streamingChatIds, loadingChats, abortControllers, downloadProgress, pendingMessages],
+    [streamingChatIds, loadingChats, abortControllers, downloadProgress],
   );
 
   return (

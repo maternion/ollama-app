@@ -155,14 +155,11 @@ export async function getModels(query?: string): Promise<Model[]> {
         // Remove the latest tag from the returned model
         const modelName = m.name.replace(/:latest$/, "");
 
-        const model = new Model({
+        return new Model({
           model: modelName,
           digest: m.digest,
           modified_at: m.modified_at ? new Date(m.modified_at) : undefined,
         });
-        (model as any).details = (m as any).details;
-        (model as any).capabilities = (m as any).capabilities;
-        return model;
       });
 
     // Filter by query if provided
@@ -308,8 +305,6 @@ export async function* sendMessage(
   fileTools?: boolean,
   forceUpdate?: boolean,
   think?: boolean | string,
-  format?: string,
-  systemMessage?: string,
 ): AsyncGenerator<ChatEventUnion> {
   // Convert Uint8Array to base64 for JSON serialization
   const serializedAttachments = attachments?.map((att) => ({
@@ -322,34 +317,26 @@ export async function* sendMessage(
     think !== undefined &&
     (typeof think === "boolean" || (typeof think === "string" && think !== ""));
 
-  const body: any = new ChatRequest({
-    model: model.model,
-    prompt: message,
-    ...(index !== undefined ? { index } : {}),
-    ...(serializedAttachments !== undefined
-      ? { attachments: serializedAttachments }
-      : {}),
-    // Always send web_search as a boolean value (default to false)
-    web_search: webSearch ?? false,
-    file_tools: fileTools ?? false,
-    ...(forceUpdate !== undefined ? { forceUpdate } : {}),
-    ...(shouldSendThink ? { think } : {}),
-  });
-  if (format) {
-    try {
-      body.format = JSON.parse(format);
-    } catch {
-      body.format = format; // fallback: send as string (e.g., "json")
-    }
-  }
-  if (systemMessage) body.system_message = systemMessage;
-
   const response = await fetch(`${API_BASE}/api/v1/chat/${chatId}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      new ChatRequest({
+        model: model.model,
+        prompt: message,
+        ...(index !== undefined ? { index } : {}),
+        ...(serializedAttachments !== undefined
+          ? { attachments: serializedAttachments }
+          : {}),
+        // Always send web_search as a boolean value (default to false)
+        web_search: webSearch ?? false,
+        file_tools: fileTools ?? false,
+        ...(forceUpdate !== undefined ? { forceUpdate } : {}),
+        ...(shouldSendThink ? { think } : {}),
+      }),
+    ),
     signal,
   });
 
@@ -590,21 +577,4 @@ export async function getCloudStatus(): Promise<CloudStatusResponse | null> {
     disabled: Boolean(data.disabled),
     source: (data.source as CloudStatusSource) || "none",
   };
-}
-
-// Generic helpers for update API
-export async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
-  return res.json();
-}
-
-export async function postJSON<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
-  return res.json();
 }

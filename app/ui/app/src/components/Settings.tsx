@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Text } from "@/components/ui/text";
 import { Input } from "@/components/ui/input";
@@ -7,37 +7,39 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
+  ClaudeDesktopModelsSettings,
+  type ClaudeDesktopModelsSettingsHandle,
+} from "@/components/ClaudeDesktopModelsSettings";
+import {
+  CodexDesktopModelsSettings,
+  type CodexDesktopModelsSettingsHandle,
+} from "@/components/CodexDesktopModelsSettings";
+import {
   WifiIcon,
   FolderIcon,
   BoltIcon,
   WrenchIcon,
   CloudIcon,
+  CogIcon,
   ArrowDownTrayIcon,
-  CodeBracketIcon,
-  TagIcon,
-  SignalIcon,
-  SparklesIcon,
-  DocumentTextIcon,
-  ServerStackIcon,
-  AdjustmentsHorizontalIcon,
-  ChatBubbleLeftRightIcon,
-  PaintBrushIcon,
-  PencilSquareIcon,
+  ArrowPathIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { CogIcon } from "@heroicons/react/24/outline";
 import { Settings as SettingsType } from "@/gotypes";
+import { isWindowsPlatform } from "@/lib/platform";
+import { settingsMutationScope } from "@/lib/settingsMutationScope";
 import { useUser } from "@/hooks/useUser";
 import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBlocker } from "@tanstack/react-router";
 import {
   getSettings,
+  type CloudStatusSource,
   type CloudStatusResponse,
   updateCloudSetting,
   updateSettings,
   getInferenceCompute,
 } from "@/api";
-import { McpServerAddDialog } from "@/components/McpServerAddDialog";
-import type { McpServerConfig } from "@/lib/recommended-mcp-servers";
 
 function AnimatedDots() {
   return (
@@ -53,10 +55,109 @@ function AnimatedDots() {
   );
 }
 
+interface SettingsDefaultsActions {
+  updateSettings: (settings: SettingsType) => Promise<unknown>;
+  updateCloud: (enabled: boolean) => Promise<unknown>;
+  updateShowAppsInMenu: (visible: boolean) => Promise<unknown>;
+  resetChatGPTModels: () => Promise<boolean>;
+  resetClaudeMappings: () => Promise<boolean>;
+  currentSettings: SettingsType;
+  currentShowAppsInMenu: boolean;
+  cloudSource: CloudStatusSource;
+  onSaved: () => void;
+}
+
+interface CloudUpdateRequest {
+  enabled: boolean;
+  requestId: number;
+}
+
+let latestCloudRequestId = 0;
+const savedConfirmationDuration = 3000;
+
+export async function applySettingsDefaults({
+  updateSettings,
+  updateCloud,
+  updateShowAppsInMenu,
+  resetChatGPTModels,
+  resetClaudeMappings,
+  currentSettings,
+  currentShowAppsInMenu,
+  cloudSource,
+  onSaved,
+}: SettingsDefaultsActions): Promise<void> {
+  const cloudNeedsReset = cloudSource === "config" || cloudSource === "both";
+  const rollbacks: Array<() => Promise<unknown>> = [];
+
+  try {
+    if (cloudNeedsReset) {
+      await updateCloud(true);
+      rollbacks.push(() => updateCloud(false));
+    }
+
+    await updateSettings(
+      new SettingsType({
+        Expose: false,
+        Browser: false,
+        Models: "",
+        Agent: false,
+        Tools: false,
+        ContextLength: currentSettings.ContextLength,
+        AutoUpdateEnabled: true,
+      }),
+    );
+    rollbacks.push(() => updateSettings(currentSettings));
+
+    await updateShowAppsInMenu(true);
+    rollbacks.push(() => updateShowAppsInMenu(currentShowAppsInMenu));
+
+    // Reset app-specific model settings only after the rest of the page has
+    // succeeded, because those native profile changes cannot be rolled back
+    // with the settings API.
+    if (!(await resetChatGPTModels())) {
+      throw new Error("ChatGPT models could not be reset");
+    }
+    if (!(await resetClaudeMappings())) {
+      throw new Error("Claude model mappings could not be reset");
+    }
+  } catch (error) {
+    const rollbackErrors: unknown[] = [];
+    for (const rollback of rollbacks.reverse()) {
+      try {
+        await rollback();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      console.error("Failed to roll back settings reset:", rollbackErrors);
+    }
+    throw error;
+  }
+
+  onSaved();
+}
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const [showSaved, setShowSaved] = useState(false);
   const [restartMessage, setRestartMessage] = useState(false);
+  const [showAppsInMenu, setShowAppsInMenuState] = useState(true);
+  const [showAppsInMenuPending, setShowAppsInMenuPending] = useState(false);
+  const [resettingToDefaults, setResettingToDefaults] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [hasClaudeDraftChanges, setHasClaudeDraftChanges] = useState(false);
+  const [hasCodexDraftChanges, setHasCodexDraftChanges] = useState(false);
+  const claudeModelsSettingsRef =
+    useRef<ClaudeDesktopModelsSettingsHandle>(null);
+  const codexModelsSettingsRef = useRef<CodexDesktopModelsSettingsHandle>(null);
+  const savedConfirmationTimeoutRef = useRef<number | null>(null);
+  useBlocker({
+    shouldBlockFn: () =>
+      !window.confirm("Discard unapplied app model changes?"),
+    enableBeforeUnload: hasClaudeDraftChanges || hasCodexDraftChanges,
+    disabled: !hasClaudeDraftChanges && !hasCodexDraftChanges,
+  });
   const {
     user,
     isAuthenticated,
@@ -69,13 +170,32 @@ export default function Settings() {
   } = useUser();
   const [isAwaitingConnection, setIsAwaitingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
   const [pollingInterval, setPollingInterval] = useState<number | null>(null);
   const {
     cloudDisabled,
     cloudStatus,
-    isLoading: cloudStatusLoading,
+    isKnown: cloudStatusKnown,
   } = useCloudStatus();
+
+  const showSavedConfirmation = useCallback(() => {
+    if (savedConfirmationTimeoutRef.current !== null) {
+      window.clearTimeout(savedConfirmationTimeoutRef.current);
+    }
+    setShowSaved(true);
+    savedConfirmationTimeoutRef.current = window.setTimeout(() => {
+      setShowSaved(false);
+      savedConfirmationTimeoutRef.current = null;
+    }, savedConfirmationDuration);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (savedConfirmationTimeoutRef.current !== null) {
+        window.clearTimeout(savedConfirmationTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const {
     data: settingsData,
@@ -96,22 +216,24 @@ export default function Settings() {
   const defaultContextLength = inferenceComputeResponse?.defaultContextLength;
 
   const updateSettingsMutation = useMutation({
+    scope: settingsMutationScope,
     mutationFn: updateSettings,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings"] });
-      setShowSaved(true);
-      setTimeout(() => setShowSaved(false), 1500);
     },
   });
 
   const updateCloudMutation = useMutation({
-    mutationFn: (enabled: boolean) => updateCloudSetting(enabled),
-    onMutate: async (enabled: boolean) => {
+    scope: settingsMutationScope,
+    mutationFn: ({ enabled }: CloudUpdateRequest) =>
+      updateCloudSetting(enabled),
+    onMutate: async ({ enabled, requestId }: CloudUpdateRequest) => {
       await queryClient.cancelQueries({ queryKey: ["cloudStatus"] });
 
       const previous = queryClient.getQueryData<CloudStatusResponse | null>([
         "cloudStatus",
       ]);
+      if (requestId !== latestCloudRequestId) return { previous };
       const envForcesDisabled =
         previous?.source === "env" || previous?.source === "both";
 
@@ -130,27 +252,43 @@ export default function Settings() {
 
       return { previous };
     },
-    onError: (_error, _enabled, context) => {
+    onError: (_error, request, context) => {
+      if (request.requestId !== latestCloudRequestId) return;
       if (context?.previous !== undefined) {
         queryClient.setQueryData(["cloudStatus"], context.previous);
       }
     },
-    onSuccess: (status) => {
+    onSuccess: (status, request) => {
+      if (request.requestId !== latestCloudRequestId) return;
       queryClient.setQueryData<CloudStatusResponse | null>(
         ["cloudStatus"],
         status,
       );
+    },
+    onSettled: (_status, _error, request) => {
+      if (request.requestId !== latestCloudRequestId) return;
       queryClient.invalidateQueries({ queryKey: ["models"] });
       queryClient.invalidateQueries({ queryKey: ["cloudStatus"] });
-
-      setShowSaved(true);
-      setTimeout(() => setShowSaved(false), 1500);
     },
   });
+
+  const requestCloudUpdate = (enabled: boolean) => {
+    const requestId = ++latestCloudRequestId;
+    return updateCloudMutation.mutateAsync({ enabled, requestId });
+  };
 
   useEffect(() => {
     refetchUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    window
+      .getShowAppsInMenu?.()
+      .then(setShowAppsInMenuState)
+      .catch((error) =>
+        console.error("Failed to load menu app visibility:", error),
+      );
+  }, []);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -205,70 +343,90 @@ export default function Settings() {
         if (field === "ContextLength" && value !== settings.ContextLength) {
           setRestartMessage(true);
           // Hide restart message after 3 seconds
-          setTimeout(() => setRestartMessage(false), 3000);
+          window.setTimeout(
+            () => setRestartMessage(false),
+            savedConfirmationDuration,
+          );
         }
 
-        updateSettingsMutation.mutate(updatedSettings);
+        updateSettingsMutation.mutate(updatedSettings, {
+          onSuccess: showSavedConfirmation,
+        });
       }
     },
-    [settings, updateSettingsMutation],
+    [settings, showSavedConfirmation, updateSettingsMutation],
   );
 
-  const handleResetToDefaults = () => {
-    if (settings) {
-      const defaultSettings = new SettingsType({
-        ...settings,
-        Expose: false,
-        Browser: false,
-        Models: "",
-        Agent: false,
-        Tools: false,
-        ContextLength: 0,
-        AutoUpdateEnabled: false,
-        CustomCSS: "",
-        ShowRawOutput: false,
-        ShowModelQuantization: false,
-        ShowModelTags: false,
-        TitleGenerationUseLLM: false,
-        TitleGenerationUseFirstLine: false,
-        TitleGenerationPrompt: "",
-        AskForTitleConfirmation: false,
-        McpServers: "",
-        PdfMode: "text",
-        SystemMessage: "",
-        ShowSystemMessage: false,
-        Temperature: 0.8,
-        TopK: 40,
-        TopP: 0.9,
-        MinP: 0,
-        RepeatPenalty: 1.0,
-        PresencePenalty: 0,
-        FrequencyPenalty: 0,
-        ShowModelLoadStatus: false,
-      });
-      updateSettingsMutation.mutate(defaultSettings);
+  const updateShowAppsInMenuVisibility = async (checked: boolean) => {
+    const previous = showAppsInMenu;
+    setShowAppsInMenuState(checked);
+    setShowAppsInMenuPending(true);
+    try {
+      await window.setShowAppsInMenu?.(checked);
+    } catch (error) {
+      setShowAppsInMenuState(previous);
+      throw error;
+    } finally {
+      setShowAppsInMenuPending(false);
     }
   };
 
-  const mcpServerList: McpServerConfig[] = (() => {
-    try {
-      const raw = (settings as any)?.McpServers || "";
-      const parsed = raw.trim() ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  })();
+  const handleShowAppsInMenu = (checked: boolean) => {
+    void updateShowAppsInMenuVisibility(checked)
+      .then(showSavedConfirmation)
+      .catch((error) =>
+        console.error("Failed to update menu app visibility:", error),
+      );
+  };
 
-  const handleAddMcpServer = (server: McpServerConfig) => {
-    const updated = [...mcpServerList, server];
-    handleChange("McpServers" as any, JSON.stringify(updated, null, 2));
+  const handleCloudUpdate = (enabled: boolean) => {
+    void requestCloudUpdate(enabled)
+      .then(showSavedConfirmation)
+      .catch((error) =>
+        console.error("Failed to update cloud setting:", error),
+      );
   };
 
   const cloudOverriddenByEnv =
     cloudStatus?.source === "env" || cloudStatus?.source === "both";
-  const cloudToggleDisabled =
-    cloudStatusLoading || updateCloudMutation.isPending || cloudOverriddenByEnv;
+  const cloudToggleDisabled = cloudOverriddenByEnv;
+
+  const handleResetToDefaults = async () => {
+    const cloudSource = cloudStatus?.source;
+    if (!settings || resettingToDefaults || !cloudSource) return;
+
+    setResettingToDefaults(true);
+    if (savedConfirmationTimeoutRef.current !== null) {
+      window.clearTimeout(savedConfirmationTimeoutRef.current);
+      savedConfirmationTimeoutRef.current = null;
+    }
+    setShowSaved(false);
+    setRestartMessage(false);
+    setResetError(null);
+    try {
+      await applySettingsDefaults({
+        updateSettings: (defaultSettings) =>
+          updateSettingsMutation.mutateAsync(defaultSettings),
+        updateCloud: requestCloudUpdate,
+        updateShowAppsInMenu: updateShowAppsInMenuVisibility,
+        resetChatGPTModels: async () =>
+          (await codexModelsSettingsRef.current?.resetToDefaults()) ?? true,
+        resetClaudeMappings: async () =>
+          (await claudeModelsSettingsRef.current?.resetToDefaults()) ?? true,
+        currentSettings: settings,
+        currentShowAppsInMenu: showAppsInMenu,
+        cloudSource,
+        onSaved: showSavedConfirmation,
+      });
+    } catch (error) {
+      console.error("Failed to reset settings:", error);
+      setResetError(
+        "Ollama could not reset every setting. Check the settings above and try again.",
+      );
+    } finally {
+      setResettingToDefaults(false);
+    }
+  };
 
   const handleConnectOllamaAccount = async () => {
     setConnectionError(null);
@@ -305,21 +463,38 @@ export default function Settings() {
     }
   };
 
+  const handleDisconnectOllamaAccount = async () => {
+    setConnectionError(null);
+    try {
+      await disconnectUser();
+      window.location.reload();
+    } catch {
+      setConnectionError("Failed to disconnect Ollama account");
+    }
+  };
+
   if (loading) {
     return null;
   }
 
   if (error || !settings) {
     return (
-      <div className="flex items-center justify-center p-4">
+      <div className="flex flex-1 items-center justify-center">
         <div className="text-red-500">Failed to load settings</div>
       </div>
     );
   }
 
+  const isWindows = isWindowsPlatform();
+
   return (
-    <div className="w-full p-6 overflow-y-auto flex-1 min-h-0 overscroll-contain">
-      <div className="space-y-4 max-w-2xl mx-auto">
+    <main className="flex min-h-0 w-full flex-1 flex-col select-none dark:bg-neutral-900">
+      <div className="w-full p-6 overflow-y-auto flex-1 overscroll-contain">
+        <fieldset
+          disabled={resettingToDefaults}
+          aria-busy={resettingToDefaults}
+          className="mx-auto max-w-4xl space-y-4 border-0 p-0"
+        >
           {/* Connect Ollama Account */}
           <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
             <div className="p-4">
@@ -378,7 +553,7 @@ export default function Settings() {
                           type="button"
                           color="zinc"
                           className="px-3 py-2 text-sm"
-                          onClick={() => disconnectUser()}
+                          onClick={() => void handleDisconnectOllamaAccount()}
                         >
                           Sign out
                         </Button>
@@ -450,12 +625,35 @@ export default function Settings() {
                         if (cloudOverriddenByEnv) {
                           return;
                         }
-                        updateCloudMutation.mutate(checked);
+                        handleCloudUpdate(checked);
                       }}
                     />
                   </div>
                 </div>
               </Field>
+
+              {!isWindows && (
+                <Field>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-1 items-start space-x-3">
+                      <Squares2X2Icon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
+                      <div>
+                        <Label>Show apps in menu</Label>
+                        <Description>
+                          Show connected apps at the top of the Ollama menu.
+                        </Description>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <Switch
+                        checked={showAppsInMenu}
+                        disabled={showAppsInMenuPending}
+                        onChange={handleShowAppsInMenu}
+                      />
+                    </div>
+                  </div>
+                </Field>
+              )}
 
               {/* Auto Update */}
               <Field>
@@ -474,50 +672,10 @@ export default function Settings() {
                   <div className="flex-shrink-0">
                     <Switch
                       checked={settings.AutoUpdateEnabled}
-                      onChange={(checked) => handleChange("AutoUpdateEnabled", checked)}
+                      onChange={(checked) =>
+                        handleChange("AutoUpdateEnabled", checked)
+                      }
                     />
-                  </div>
-                </div>
-              </Field>
-
-              {/* Chat Import / Export */}
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <ArrowDownTrayIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Chat backup</Label>
-                      <Description>
-                        Export all chats as a JSON file or import from a previous backup.
-                      </Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0 flex gap-2">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await window.exportAllChats();
-                        } catch (e) {
-                          console.error("Export failed:", e);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
-                    >
-                      Export
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await window.importChats();
-                          queryClient.invalidateQueries({ queryKey: ["chats"] });
-                        } catch (e) {
-                          console.error("Import failed:", e);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
-                    >
-                      Import
-                    </button>
                   </div>
                 </div>
               </Field>
@@ -597,7 +755,9 @@ export default function Settings() {
                     </Description>
                     <div className="mt-3">
                       <Slider
-                        value={settings.ContextLength || defaultContextLength || 0}
+                        value={
+                          settings.ContextLength || defaultContextLength || 0
+                        }
                         onChange={(value) => {
                           handleChange("ContextLength", value);
                         }}
@@ -619,419 +779,32 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Custom CSS */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start space-x-3">
-                  <PaintBrushIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                  <div className="w-full">
-                    <Label>Custom CSS</Label>
-                    <Description>Inject custom CSS styles into the app UI.</Description>
-                    <textarea
-                      value={(settings as any)?.CustomCSS || ""}
-                      onChange={(e) => handleChange("CustomCSS" as any, e.target.value)}
-                      className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
-                      placeholder="/* Your custom CSS here */"
-                    />
-                  </div>
-                </div>
-              </Field>
-            </div>
-          </div>
-
-          {/* Display Settings */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <CodeBracketIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Show raw output toggle</Label>
-                      <Description>Show a toggle on assistant messages to display raw text instead of formatted Markdown.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.ShowRawOutput || false}
-                      onChange={(checked) => handleChange("ShowRawOutput" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <TagIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Show model quantization</Label>
-                      <Description>Display quantization level (e.g., Q4_K_M) in the model picker.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.ShowModelQuantization || false}
-                      onChange={(checked) => handleChange("ShowModelQuantization" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <TagIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Show model tags</Label>
-                      <Description>Display parameter size and family badges in the model picker.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.ShowModelTags || false}
-                      onChange={(checked) => handleChange("ShowModelTags" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <SignalIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Show model load status</Label>
-                      <Description>Display which models are currently loaded in memory in the model picker.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.ShowModelLoadStatus || false}
-                      onChange={(checked) => handleChange("ShowModelLoadStatus" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-            </div>
-          </div>
-
-          {/* Title Generation */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <SparklesIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Use LLM to generate titles</Label>
-                      <Description>Send a secondary LLM request to generate a descriptive title.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.TitleGenerationUseLLM || false}
-                      onChange={(checked) => handleChange("TitleGenerationUseLLM" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <DocumentTextIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Use first line as title</Label>
-                      <Description>Use the first line of the user's message as the chat title.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.TitleGenerationUseFirstLine || false}
-                      onChange={(checked) => handleChange("TitleGenerationUseFirstLine" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <ChatBubbleLeftRightIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Ask for confirmation</Label>
-                      <Description>Show a confirmation dialog before applying a generated title.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.AskForTitleConfirmation || false}
-                      onChange={(checked) => handleChange("AskForTitleConfirmation" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-              <Field>
-                <div className="flex items-start space-x-3">
-                  <PencilSquareIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                  <div className="w-full">
-                    <Label>Custom title prompt</Label>
-                    <Description>Custom prompt template. Use {"{{USER}}"} and {"{{ASSISTANT}}"} placeholders. Leave empty for default.</Description>
-                    <textarea
-                      value={(settings as any)?.TitleGenerationPrompt || ""}
-                      onChange={(e) => handleChange("TitleGenerationPrompt" as any, e.target.value)}
-                      className="mt-2 w-full h-20 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm text-neutral-900 dark:text-neutral-100"
-                      placeholder="Generate a short title for this conversation..."
-                    />
-                  </div>
-                </div>
-              </Field>
-            </div>
-          </div>
-
-          {/* PDF Processing */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start space-x-3">
-                  <DocumentTextIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                  <div className="w-full">
-                    <Label>PDF Processing Mode</Label>
-                    <Description>Choose how PDF files are processed when attached to chats.</Description>
-                    <div className="mt-2 inline-flex w-full max-w-md rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-0.5">
-                      {([
-                        { value: "text", label: "Extract text", hint: "Works with all models" },
-                        { value: "images", label: "Render as images", hint: "Requires vision model" },
-                      ] as const).map((opt) => {
-                        const active = ((settings as any)?.PdfMode || "text") === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => handleChange("PdfMode" as any, opt.value)}
-                            className={`flex-1 rounded-md px-3 py-1.5 text-left transition-colors cursor-pointer ${
-                              active
-                                ? "bg-white dark:bg-neutral-700 shadow-sm"
-                                : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                            }`}
-                          >
-                            <div className={`text-sm font-medium ${active ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-500 dark:text-neutral-400"}`}>
-                              {opt.label}
-                            </div>
-                            <div className="text-xs text-neutral-400 dark:text-neutral-500">
-                              {opt.hint}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </Field>
-            </div>
-          </div>
-
-          {/* MCP Servers */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start space-x-3">
-                  <ServerStackIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                  <div className="w-full">
-                    <Label>MCP Servers</Label>
-                    <Description>Configure Model Context Protocol servers. Server connections will be available in a future update.</Description>
-                    <div className="mt-2">
-                      <button
-                        type="button"
-                        onClick={() => setMcpDialogOpen(true)}
-                        className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 border border-zinc-950/90 rounded-full shadow-sm cursor-pointer hover:bg-zinc-800 dark:text-zinc-950 dark:bg-white dark:border-zinc-950/10 dark:hover:bg-neutral-100"
-                      >
-                        Add server
-                      </button>
-                    </div>
-                    <textarea
-                      value={(settings as any)?.McpServers || ""}
-                      onChange={(e) => handleChange("McpServers" as any, e.target.value)}
-                      className="mt-2 w-full h-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-sm font-mono text-neutral-900 dark:text-neutral-100"
-                      placeholder='[{"id":"example","name":"Example","url":"https://example.com/mcp","enabled":false}]'
-                    />
-                    <Description>JSON array of MCP server configurations. Format: id, name, url, enabled, description.</Description>
-                  </div>
-                </div>
-              </Field>
-            </div>
-          </div>
-
-          {/* Sampling Parameters */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start space-x-3">
-                  <AdjustmentsHorizontalIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                  <div>
-                    <Label>Sampling Parameters</Label>
-                    <Description>Control how the model generates responses. Leave at defaults for standard behavior.</Description>
-                  </div>
-                </div>
-              </Field>
-
-              {/* Temperature */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Temperature: {((settings as any)?.Temperature ?? 0.8).toFixed(1)}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.Temperature ?? 0.8}
-                  onChange={(value) => handleChange("Temperature" as any, value)}
-                  options={[
-                    { value: 0, label: "0" },
-                    { value: 0.2, label: "0.2" },
-                    { value: 0.4, label: "0.4" },
-                    { value: 0.6, label: "0.6" },
-                    { value: 0.8, label: "0.8" },
-                    { value: 1.0, label: "1.0" },
-                    { value: 1.2, label: "1.2" },
-                    { value: 1.5, label: "1.5" },
-                    { value: 2.0, label: "2.0" },
-                  ]}
-                />
-              </Field>
-
-              {/* Top P */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Top P: {((settings as any)?.TopP ?? 0.9).toFixed(1)}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.TopP ?? 0.9}
-                  onChange={(value) => handleChange("TopP" as any, value)}
-                  options={[
-                    { value: 0.1, label: "0.1" },
-                    { value: 0.3, label: "0.3" },
-                    { value: 0.5, label: "0.5" },
-                    { value: 0.7, label: "0.7" },
-                    { value: 0.9, label: "0.9" },
-                    { value: 1.0, label: "1.0" },
-                  ]}
-                />
-              </Field>
-
-              {/* Top K */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Top K: {(settings as any)?.TopK ?? 40}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.TopK ?? 40}
-                  onChange={(value) => handleChange("TopK" as any, value)}
-                  options={[
-                    { value: 1, label: "1" },
-                    { value: 10, label: "10" },
-                    { value: 20, label: "20" },
-                    { value: 40, label: "40" },
-                    { value: 60, label: "60" },
-                    { value: 80, label: "80" },
-                    { value: 100, label: "100" },
-                  ]}
-                />
-              </Field>
-
-              {/* Min P */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Min P: {((settings as any)?.MinP ?? 0).toFixed(1)}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.MinP ?? 0}
-                  onChange={(value) => handleChange("MinP" as any, value)}
-                  options={[
-                    { value: 0, label: "0" },
-                    { value: 0.05, label: "0.05" },
-                    { value: 0.1, label: "0.1" },
-                    { value: 0.2, label: "0.2" },
-                    { value: 0.3, label: "0.3" },
-                    { value: 0.5, label: "0.5" },
-                  ]}
-                />
-              </Field>
-
-              {/* Repeat Penalty */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Repeat Penalty: {((settings as any)?.RepeatPenalty ?? 1.0).toFixed(1)}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.RepeatPenalty ?? 1.0}
-                  onChange={(value) => handleChange("RepeatPenalty" as any, value)}
-                  options={[
-                    { value: 0.8, label: "0.8" },
-                    { value: 0.9, label: "0.9" },
-                    { value: 1.0, label: "1.0" },
-                    { value: 1.1, label: "1.1" },
-                    { value: 1.2, label: "1.2" },
-                    { value: 1.3, label: "1.3" },
-                    { value: 1.5, label: "1.5" },
-                  ]}
-                />
-              </Field>
-
-              {/* Presence Penalty */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Presence Penalty: {((settings as any)?.PresencePenalty ?? 0).toFixed(1)}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.PresencePenalty ?? 0}
-                  onChange={(value) => handleChange("PresencePenalty" as any, value)}
-                  options={[
-                    { value: 0, label: "0" },
-                    { value: 0.5, label: "0.5" },
-                    { value: 1.0, label: "1.0" },
-                    { value: 1.5, label: "1.5" },
-                    { value: 2.0, label: "2.0" },
-                  ]}
-                />
-              </Field>
-
-              {/* Frequency Penalty */}
-              <Field>
-                <div className="flex items-center justify-between">
-                  <Label>Frequency Penalty: {((settings as any)?.FrequencyPenalty ?? 0).toFixed(1)}</Label>
-                </div>
-                <Slider
-                  value={(settings as any)?.FrequencyPenalty ?? 0}
-                  onChange={(value) => handleChange("FrequencyPenalty" as any, value)}
-                  options={[
-                    { value: 0, label: "0" },
-                    { value: 0.5, label: "0.5" },
-                    { value: 1.0, label: "1.0" },
-                    { value: 1.5, label: "1.5" },
-                    { value: 2.0, label: "2.0" },
-                  ]}
-                />
-              </Field>
-            </div>
-          </div>
-
-          {/* System Message Display */}
-          <div className="overflow-hidden rounded-xl bg-white dark:bg-neutral-800">
-            <div className="space-y-4 p-4">
-              <Field>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start space-x-3 flex-1">
-                    <ChatBubbleLeftRightIcon className="mt-1 h-5 w-5 flex-shrink-0 text-black dark:text-neutral-100" />
-                    <div>
-                      <Label>Show system messages</Label>
-                      <Description>Display system messages in the conversation view. Set per-chat using the + menu.</Description>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <Switch
-                      checked={(settings as any)?.ShowSystemMessage || false}
-                      onChange={(checked) => handleChange("ShowSystemMessage" as any, checked)}
-                    />
-                  </div>
-                </div>
-              </Field>
-            </div>
-          </div>
+          {!isWindows && (
+            <section
+              aria-labelledby="apps-settings-heading"
+              className="space-y-2"
+            >
+              <h2
+                id="apps-settings-heading"
+                className="px-1 text-xs font-medium uppercase tracking-wider text-neutral-400 dark:text-neutral-500"
+              >
+                Apps
+              </h2>
+              <ClaudeDesktopModelsSettings
+                ref={claudeModelsSettingsRef}
+                includeCloudModels={
+                  isAuthenticated && cloudStatusKnown && !cloudDisabled
+                }
+                onDraftChange={setHasClaudeDraftChanges}
+                showSectionHeading={false}
+              />
+              <CodexDesktopModelsSettings
+                ref={codexModelsSettingsRef}
+                accountKey={`${user?.id ?? "signed-out"}:${user?.plan ?? ""}:${cloudDisabled ? "cloud-off" : "cloud-on"}`}
+                onDraftChange={setHasCodexDraftChanges}
+              />
+            </section>
+          )}
 
           {/* Agent Mode */}
           {window.OLLAMA_TOOLS && (
@@ -1078,35 +851,44 @@ export default function Settings() {
           )}
 
           {/* Reset button */}
-          <div className="mt-6 flex justify-end px-4">
+          <div className="flex items-center justify-between gap-4 px-4">
+            {resetError ? (
+              <p
+                role="alert"
+                className="text-xs text-red-600 dark:text-red-400"
+              >
+                {resetError}
+              </p>
+            ) : (
+              <span />
+            )}
             <Button
               type="button"
               color="white"
               className="px-3"
-              onClick={handleResetToDefaults}
+              disabled={resettingToDefaults || !cloudStatusKnown}
+              onClick={() => void handleResetToDefaults()}
             >
-              Reset to defaults
+              {resettingToDefaults && (
+                <ArrowPathIcon data-slot="icon" className="animate-spin" />
+              )}
+              {resettingToDefaults ? "Resetting…" : "Reset to defaults"}
             </Button>
           </div>
+        </fieldset>
+
+        {/* Saved indicator */}
+        {(showSaved || restartMessage) && (
+          <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 transition-opacity duration-300 z-50">
+            <Badge
+              color="green"
+              className="!bg-green-500 !text-white dark:!bg-green-600"
+            >
+              Saved
+            </Badge>
+          </div>
+        )}
       </div>
-
-      {(showSaved || restartMessage) && (
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 transition-opacity duration-300 z-50">
-          <Badge
-            color="green"
-            className="!bg-green-500 !text-white dark:!bg-green-600"
-          >
-            Saved
-          </Badge>
-        </div>
-      )}
-
-      <McpServerAddDialog
-        open={mcpDialogOpen}
-        existingServers={mcpServerList}
-        onAdd={handleAddMcpServer}
-        onClose={() => setMcpDialogOpen(false)}
-      />
-    </div>
+    </main>
   );
 }

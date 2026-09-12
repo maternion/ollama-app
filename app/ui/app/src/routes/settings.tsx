@@ -1,7 +1,7 @@
+import { AppSidebar } from "@/components/AppSidebar";
+import { SidebarLayout } from "@/components/layout/layout";
 import { createFileRoute } from "@tanstack/react-router";
 import Settings from "@/components/Settings";
-import { SidebarLayout } from "@/components/layout/layout";
-import { ChatSidebar } from "@/components/ChatSidebar";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsRoute,
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsRoute() {
   return (
-    <SidebarLayout sidebar={<ChatSidebar />}>
+    <SidebarLayout title="Settings" sidebar={<AppSidebar current="settings" />}>
       <Settings />
     </SidebarLayout>
   );

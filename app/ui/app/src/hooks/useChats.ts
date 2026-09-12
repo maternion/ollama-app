@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "@tanstack/react-router";
 import { getChats, getChat, sendMessage, type ChatEventUnion } from "../api";
-import { Chat, ChatsResponse, ErrorEvent, Model } from "@/gotypes";
+import { Chat, ErrorEvent, Model } from "@/gotypes";
 import { Message } from "@/gotypes";
 import { useSelectedModel } from "./useSelectedModel";
 import { createQueryBatcher } from "./useQueryBatcher";
@@ -197,7 +196,6 @@ export const useIsWaitingForLoad = (chatId: string) => {
 
 export const useSendMessage = (chatId: string) => {
   let updatableChatId = chatId;
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { selectedModel } = useSelectedModel();
   const {
@@ -206,8 +204,6 @@ export const useSendMessage = (chatId: string) => {
     setLoadingChats,
     setAbortControllers,
     setDownloadProgress,
-    pendingMessages,
-    setPendingMessages,
   } = useStreamingContext();
 
   const cleanupStreaming = (id: string) => {
@@ -245,8 +241,6 @@ export const useSendMessage = (chatId: string) => {
       fileTools,
       forceUpdate,
       think,
-      format,
-      systemMessage,
       onChatEvent,
     }: {
       message: string;
@@ -256,8 +250,6 @@ export const useSendMessage = (chatId: string) => {
       fileTools?: boolean;
       forceUpdate?: boolean;
       think?: boolean | string;
-      format?: string;
-      systemMessage?: string;
       onChatEvent?: (event: ChatEventUnion) => void;
     }) => {
       // For existing chats, set streaming state and add optimistic user message
@@ -334,8 +326,6 @@ export const useSendMessage = (chatId: string) => {
         fileTools,
         forceUpdate,
         think,
-        format,
-        systemMessage,
       );
       let currentChatId = chatId;
       let isCancelled = false;
@@ -352,10 +342,6 @@ export const useSendMessage = (chatId: string) => {
         ["chat", currentChatId],
         { batchInterval: 4, immediateFirst: true }, // ~250fps for smoother updates
       );
-
-      let streamStartTime: number | null = null;
-      let tokenCount = 0;
-      let hasServerStats = false;
 
       for await (const event of events) {
         // If cancelled, continue draining the stream but don't update UI
@@ -380,12 +366,6 @@ export const useSendMessage = (chatId: string) => {
 
         switch (event.eventName) {
           case "chat": {
-            if (streamStartTime === null && event.content && event.content.trim().length > 0) {
-              streamStartTime = Date.now();
-            }
-            if (event.content && event.content.length > 0) {
-              tokenCount++;
-            }
             // Update the current chat data with streaming content
             batcher.scheduleBatch((old: { chat: Chat } | undefined) => {
               if (!old) return old;
@@ -681,100 +661,11 @@ export const useSendMessage = (chatId: string) => {
               newMap.delete(currentChatId);
               return newMap;
             });
-
-            // Flush batcher so pending content batch doesn't overwrite stats
-            batcher.flushBatch();
-
-            // If server didn't compute stats, compute client-side and persist on message
-            if (streamStartTime !== null && tokenCount > 0) {
-              const elapsedMs = Date.now() - streamStartTime;
-              const elapsedSec = elapsedMs / 1000;
-              const tps = elapsedSec > 0 ? tokenCount / elapsedSec : 0;
-              const durationStr = elapsedSec < 1
-                ? `${Math.round(elapsedMs)}ms`
-                : elapsedSec < 60
-                  ? `${elapsedSec.toFixed(1)}s`
-                  : `${Math.floor(elapsedSec / 60)}m ${Math.round(elapsedSec % 60)}s`;
-
-              queryClient.setQueryData(
-                ["chat", currentChatId],
-                (old: { chat: Chat } | undefined) => {
-                  if (!old) return old;
-                  const msgs = [...(old.chat.messages || [])];
-                  for (let i = msgs.length - 1; i >= 0; i--) {
-                    if (msgs[i].role === "assistant") {
-                      const m = msgs[i] as any;
-                      if (!hasServerStats || m.evalDuration == null) {
-                        msgs[i] = {
-                          ...m,
-                          tokensPerSecond: Math.round(tps * 10) / 10,
-                          evalDuration: durationStr,
-                          evalCount: m.evalCount ?? tokenCount,
-                        } as any;
-                      }
-                      break;
-                    }
-                  }
-                  return { ...old, chat: new Chat({ ...old.chat, messages: msgs }) };
-                },
-              );
-            }
-
-            // Drain a queued/pending message for this chat, if any.
-            // The pending message is cleared here; the ChatForm re-sends it
-            // by watching for the transition out of streaming.
-            const pending = pendingMessages.get(currentChatId);
-            if (pending) {
-              setPendingMessages((prev) => {
-                const next = new Map(prev);
-                next.delete(currentChatId);
-                return next;
-              });
-            }
+            // Ensure chat is fresh for next fetch
+            queryClient.invalidateQueries({
+              queryKey: ["chat", currentChatId],
+            });
             break;
-          case "title": {
-            // Server generated a title — update the chats list immediately
-            if (event.chatId && event.title) {
-              queryClient.setQueryData(
-                ["chats"],
-                (oldData: ChatsResponse | undefined) => {
-                  if (!oldData?.chatInfos) return oldData;
-                  return {
-                    ...oldData,
-                    chatInfos: oldData.chatInfos.map((chat) =>
-                      chat.id === event.chatId
-                        ? { ...chat, title: event.title! }
-                        : chat,
-                    ),
-                  };
-                },
-              );
-            }
-            break;
-          }
-          case "stats": {
-            hasServerStats = true;
-            queryClient.setQueryData(
-              ["chat", currentChatId],
-              (old: { chat: Chat } | undefined) => {
-                if (!old) return old;
-                const msgs = [...(old.chat.messages || [])];
-                for (let i = msgs.length - 1; i >= 0; i--) {
-                  if (msgs[i].role === "assistant") {
-                    msgs[i] = {
-                      ...(msgs[i] as any),
-                      evalCount: event.evalCount,
-                      tokensPerSecond: event.tokensPerSecond,
-                      evalDuration: event.evalDuration,
-                    } as any;
-                    break;
-                  }
-                }
-                return { ...old, chat: new Chat({ ...old.chat, messages: msgs }) };
-              },
-            );
-            break;
-          }
           case "chat_created": {
             if (!event.chatId) break;
             const newId = event.chatId;
@@ -835,14 +726,6 @@ export const useSendMessage = (chatId: string) => {
       // Flush any remaining batched updates and cleanup
       batcher.flushBatch();
       batcher.cleanup();
-
-      // If we started with a "new" chat, navigate to the created chat
-      if (chatId === "new" && updatableChatId && updatableChatId !== "new") {
-        router.navigate({
-          to: "/c/$chatId",
-          params: { chatId: updatableChatId },
-        });
-      }
     },
   });
 };
