@@ -47,6 +47,7 @@ export interface FileValidationOptions {
   maxFileSize?: number; // in MB
   allowedExtensions?: string[];
   hasVisionCapability?: boolean;
+  hasAudioCapability?: boolean;
   selectedModel?: Model | null;
   customValidator?: (file: File) => { valid: boolean; error?: string };
 }
