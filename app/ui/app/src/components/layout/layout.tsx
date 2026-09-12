@@ -1,9 +1,6 @@
 import { Link } from "@tanstack/react-router";
+import { useSettings } from "@/hooks/useSettings";
 import { ChatIcon } from "@/components/ChatIcon";
-import { isWindowsPlatform } from "@/lib/platform";
-import { useState } from "react";
-
-let sessionSidebarOpen = false;
 
 export function SidebarLayout({
   sidebar,
@@ -12,28 +9,25 @@ export function SidebarLayout({
 }: React.PropsWithChildren<{
   sidebar: React.ReactNode;
   title?: string;
+  collapsible?: boolean;
+  chatId?: string;
 }>) {
-  const [sidebarOpen, setSidebarOpen] = useState(sessionSidebarOpen);
-  const isWindows = isWindowsPlatform();
-
-  const toggleSidebar = () => {
-    sessionSidebarOpen = !sidebarOpen;
-    setSidebarOpen(sessionSidebarOpen);
-  };
+  const { settings, setSettings } = useSettings();
+  const isWindows = navigator.platform.toLowerCase().includes("win");
 
   return (
-    <div className="flex h-screen w-full overflow-hidden dark:bg-neutral-900">
+    <div className={`flex h-screen transition-[width] duration-300 dark:bg-neutral-900`}>
       <div
-        className={`absolute flex mx-2 py-2 z-20 items-center transition-[left] duration-375 text-neutral-500 dark:text-neutral-400 ${sidebarOpen ? (isWindows ? "left-2" : "left-[140px]") : isWindows ? "left-2" : "left-20"}`}
+        className={`absolute flex mx-2 py-2 z-20 items-center transition-[left] duration-375 text-neutral-500 dark:text-neutral-400 ${settings.sidebarOpen ? (isWindows ? "left-2" : "left-[204px]") : isWindows ? "left-2" : "left-20"}`}
       >
         <button
-          onClick={toggleSidebar}
+          onClick={() => setSettings({ SidebarOpen: !settings.sidebarOpen })}
           onMouseDown={(e) => {
             e.stopPropagation();
           }}
           className="h-9 w-9 flex items-center justify-center rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700/75 cursor-pointer"
-          aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-          title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          aria-label={settings.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          title={settings.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         >
           <svg
             className="h-5 w-5 fill-current"
@@ -50,7 +44,9 @@ export function SidebarLayout({
             params={{ chatId: "new" }}
             title="New chat"
             className={`flex ml-1 items-center justify-center rounded-full transition-opacity duration-375 h-9 w-9 hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
-              sidebarOpen ? "opacity-0 pointer-events-none" : "opacity-100"
+              settings.sidebarOpen
+                ? "opacity-0 pointer-events-none"
+                : "opacity-100"
             }`}
           >
             <ChatIcon />
@@ -58,33 +54,23 @@ export function SidebarLayout({
         )}
       </div>
       <div
-        className={`flex max-h-screen flex-col transition-[width] duration-300 ${
-          sidebarOpen
-            ? "w-48 border-r border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40"
-            : "w-0"
-        }`}
+        className={`flex flex-col transition-[width] duration-300 max-h-screen ${settings.sidebarOpen ? "w-64" : "w-0"}`}
       >
         <div
           onDoubleClick={() => window.doubleClick && window.doubleClick()}
           onMouseDown={() => window.drag && window.drag()}
           className="flex-none h-13 w-full"
         ></div>
-        {sidebarOpen && sidebar}
+        {settings.sidebarOpen && sidebar}
       </div>
-      <main className="flex min-w-0 flex-1 flex-col transition-all duration-300">
+      <main
+        className={`flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden transition-all duration-300`}
+      >
         <div
-          className={`h-13 z-10 flex w-full flex-none items-center bg-white dark:bg-neutral-900 ${title ? "" : isWindows ? "xl:hidden" : "xl:fixed xl:bg-transparent xl:dark:bg-transparent"}`}
+          className={`h-13 flex-none w-full z-10 flex items-center bg-white dark:bg-neutral-900 ${isWindows ? "xl:hidden" : "xl:fixed xl:bg-transparent xl:dark:bg-transparent"}`}
           onDoubleClick={() => window.doubleClick && window.doubleClick()}
           onMouseDown={() => window.drag && window.drag()}
-        >
-          {title && (
-            <h1
-              className={`${sidebarOpen ? "pl-6" : isWindows ? "pl-16" : "pl-36"} transition-[padding-left] duration-300 font-rounded text-md font-medium dark:text-white`}
-            >
-              {title}
-            </h1>
-          )}
-        </div>
+        ></div>
         {children}
       </main>
     </div>

@@ -131,6 +131,7 @@ declare global {
     webview?: WebviewAPI;
     drag?: () => void;
     doubleClick?: () => void;
+    exportChat?: (chatId: string) => void;
     activateOllama?: () => void;
     getClaudeDesktopStatus?: () => Promise<ClaudeDesktopStatus>;
     getClaudeDesktopConnectionSummary?: () => Promise<ClaudeDesktopStatus>;

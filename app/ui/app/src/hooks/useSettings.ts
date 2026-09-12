@@ -10,9 +10,19 @@ interface SettingsState {
   selectedModel: string;
   sidebarOpen: boolean;
   lastHomeView: string;
-  onboardingVersion: number;
   thinkEnabled: boolean;
   thinkLevel: string;
+  showRawOutput: boolean;
+  showModelQuantization: boolean;
+  showModelTags: boolean;
+  titleGenerationUseLLM: boolean;
+  titleGenerationUseFirstLine: boolean;
+  titleGenerationPrompt: string;
+  askForTitleConfirmation: boolean;
+  pdfMode: string;
+  systemMessage: string;
+  showSystemMessage: boolean;
+  showModelLoadStatus: boolean;
 }
 
 // Type for partial settings updates
@@ -25,6 +35,29 @@ type SettingsUpdate = Partial<{
   SidebarOpen: boolean;
   LastHomeView: string;
   OnboardingVersion: number;
+  ShowRawOutput: boolean;
+  ShowModelQuantization: boolean;
+  ShowModelTags: boolean;
+  TitleGenerationUseLLM: boolean;
+  TitleGenerationUseFirstLine: boolean;
+  TitleGenerationPrompt: string;
+  AskForTitleConfirmation: boolean;
+  PdfMode: string;
+  CustomCSS: string;
+  McpServers: string;
+  SystemMessage: string;
+  ShowSystemMessage: boolean;
+  ShowModelLoadStatus: boolean;
+  Temperature: number;
+  TopK: number;
+  TopP: number;
+  MinP: number;
+  RepeatPenalty: number;
+  PresencePenalty: number;
+  FrequencyPenalty: number;
+  ClaudeDesktopUsed: boolean;
+  CodexDesktopUsed: boolean;
+  APIKey: string;
 }>;
 
 export function useSettings() {
@@ -54,8 +87,24 @@ export function useSettings() {
       thinkLevel: settingsData?.settings?.ThinkLevel ?? "none",
       selectedModel: settingsData?.settings?.SelectedModel ?? "",
       sidebarOpen: settingsData?.settings?.SidebarOpen ?? false,
-      lastHomeView: settingsData?.settings?.LastHomeView ?? "chat",
-      onboardingVersion: settingsData?.settings?.OnboardingVersion ?? 0,
+      lastHomeView: settingsData?.settings?.LastHomeView ?? "launch",
+      showRawOutput: (settingsData?.settings as any)?.ShowRawOutput ?? false,
+      showModelQuantization:
+        (settingsData?.settings as any)?.ShowModelQuantization ?? false,
+      showModelTags: (settingsData?.settings as any)?.ShowModelTags ?? false,
+      titleGenerationUseLLM:
+        (settingsData?.settings as any)?.TitleGenerationUseLLM ?? false,
+      titleGenerationUseFirstLine:
+        (settingsData?.settings as any)?.TitleGenerationUseFirstLine ?? false,
+      titleGenerationPrompt:
+        (settingsData?.settings as any)?.TitleGenerationPrompt ?? "",
+      askForTitleConfirmation:
+        (settingsData?.settings as any)?.AskForTitleConfirmation ?? false,
+      pdfMode: (settingsData?.settings as any)?.PdfMode ?? "text",
+      systemMessage: (settingsData?.settings as any)?.SystemMessage ?? "",
+      showSystemMessage: (settingsData?.settings as any)?.ShowSystemMessage ?? false,
+      showModelLoadStatus:
+        (settingsData?.settings as any)?.ShowModelLoadStatus ?? false,
     }),
     [settingsData?.settings],
   );
