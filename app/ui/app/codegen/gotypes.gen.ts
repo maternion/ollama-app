@@ -657,3 +657,20 @@ export class BrowserStateData {
         this.url_to_page = source["url_to_page"];
     }
 }
+
+export class UpdateInfo {
+    version?: string;
+    downloadUrl?: string;
+    downloading: boolean;
+    downloaded: boolean;
+    downloadBytes?: number;
+
+    constructor(source: any = {}) {
+        if ('string' === typeof source) source = JSON.parse(source);
+        this.version = source["version"];
+        this.downloadUrl = source["downloadUrl"];
+        this.downloading = source["downloading"];
+        this.downloaded = source["downloaded"];
+        this.downloadBytes = source["downloadBytes"];
+    }
+}

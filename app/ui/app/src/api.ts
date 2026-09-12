@@ -578,3 +578,18 @@ export async function getCloudStatus(): Promise<CloudStatusResponse | null> {
     source: (data.source as CloudStatusSource) || "none",
   };
 }
+
+// Fork compatibility: generic JSON helpers used by useUpdate/UpdateBanner
+export async function getJSON<T>(path: string): Promise<T> {
+  const r = await fetch(path);
+  return r.json();
+}
+
+export async function postJSON<T>(path: string, body?: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r.json();
+}

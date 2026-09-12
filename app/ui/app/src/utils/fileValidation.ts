@@ -48,6 +48,7 @@ export interface FileValidationOptions {
   allowedExtensions?: string[];
   hasVisionCapability?: boolean;
   hasAudioCapability?: boolean;
+  pdfAsImages?: boolean;
   selectedModel?: Model | null;
   customValidator?: (file: File) => { valid: boolean; error?: string };
 }
