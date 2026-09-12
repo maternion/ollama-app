@@ -7,18 +7,16 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { getChat } from "@/api";
 import { Link } from "@/components/ui/link";
 import { ChatsResponse } from "@/gotypes";
-<<<<<<< HEAD
 import { CogIcon, RocketLaunchIcon, EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
 import { useMatchRoute } from "@tanstack/react-router";
 import { useStreamingContext } from "@/contexts/StreamingContext";
-=======
-import { AppNavigation } from "@/components/AppSidebar";
->>>>>>> v0.34.0
 
 // there's a hidden debug feature to copy a chat's data to the clipboard by
 // holding shift and clicking this many times within this many seconds
 const DEBUG_SHIFT_CLICKS_REQUIRED = 5;
 const DEBUG_SHIFT_CLICK_WINDOW_MS = 7000; // 7 seconds
+const launchSidebarRequestedKey = "ollama.launchSidebarRequested";
+
 interface ChatSidebarProps {
   currentChatId?: string;
 }
@@ -280,7 +278,6 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
     [startEditing, handleExportChat],
   );
 
-<<<<<<< HEAD
   if (isLoading) {
     return (
       <nav className="flex min-h-0 flex-col">
@@ -301,15 +298,9 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
     );
   }
 
-=======
->>>>>>> v0.34.0
   return (
-    <nav
-      aria-busy={isLoading || undefined}
-      className="flex flex-1 flex-col min-h-0 select-none"
-    >
+    <nav className="flex flex-1 flex-col min-h-0 select-none">
       <header className="flex flex-col gap-0.5 px-4 pb-2">
-<<<<<<< HEAD
         <Link
           href="/c/new"
           mask={{ to: "/" }}
@@ -429,90 +420,12 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
                             </svg>
                           )}
                         </span>
-=======
-        <AppNavigation current="chat" />
-      </header>
-      <div className="flex flex-1 flex-col px-4 py-1 overflow-y-auto overscroll-auto scrollbar-gutter">
-        {error ? (
-          <div className="px-2 pt-4 text-sm text-red-500">
-            Error loading chats
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3 pt-4">
-            {chatGroups.map((group) => (
-              <div key={group.name} className="flex flex-col gap-0.5">
-                <h3 className="text-xs font-medium text-neutral-400 dark:text-neutral-500 px-2 py-1 select-none">
-                  {group.name}
-                </h3>
-                {group.chats.map((chat) => (
-                  <div
-                    key={chat.id}
-                    className={`allow-context-menu flex items-center relative text-sm text-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
-                      chat.id === currentChatId
-                        ? "bg-neutral-100 text-black dark:bg-neutral-800"
-                        : ""
-                    }`}
-                    onMouseEnter={() => handleMouseEnter(chat.id)}
-                    onContextMenu={(e) =>
-                      handleContextMenu(
-                        e,
-                        chat.id,
-                        chat.title ||
-                          chat.userExcerpt ||
-                          chat.createdAt.toLocaleString(),
-                      )
-                    }
-                  >
-                    {editingChatId === chat.id ? (
-                      <div className="flex-1 flex items-center min-w-0 px-2 py-2 bg-neutral-100 text-black dark:bg-neutral-800 rounded-lg">
-                        <span className="truncate font-sans text-sm w-full">
-                          <input
-                            ref={inputRef}
-                            type="text"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                saveRename();
-                              } else if (e.key === "Escape") {
-                                setEditingChatId(null);
-                                setEditValue("");
-                              }
-                            }}
-                            className="bg-transparent border-0 focus:outline-none w-full dark:text-white"
-                            style={{
-                              font: "inherit",
-                              lineHeight: "inherit",
-                              padding: 0,
-                              margin: 0,
-                            }}
-                          />
-                        </span>
-                      </div>
-                    ) : (
-                      <Link
-                        to="/c/$chatId"
-                        params={{ chatId: chat.id }}
-                        className="flex-1 flex items-center min-w-0 px-2 py-2 select-none"
-                        onClick={(e) => {
-                          handleShiftClick(e, chat.id);
-                        }}
-                        draggable={false}
-                      >
-                        <span className="truncate font-sans text-sm">
-                          {chat.title ||
-                            chat.userExcerpt ||
-                            chat.createdAt.toLocaleString()}
-                        </span>
->>>>>>> v0.34.0
                         {copiedChatId === chat.id && (
                           <span className="ml-2 text-xs text-green-600 dark:text-green-400">
                             Copied!
                           </span>
                         )}
                       </Link>
-<<<<<<< HEAD
                       <div
                         ref={menuOpenChatId === chat.id ? menuRef : undefined}
                         data-menu-open={menuOpenChatId === chat.id ? "true" : undefined}
@@ -578,15 +491,6 @@ const [editingChatId, setEditingChatId] = useState<string | null>(null);
             </div>
           ))}
         </div>
-=======
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
->>>>>>> v0.34.0
       </div>
       <ConfirmDialog
         open={pendingDeleteId !== null}

@@ -453,9 +453,7 @@ export class Settings {
     SelectedModel: string;
     SidebarOpen: boolean;
     LastHomeView: string;
-    OnboardingVersion: number;
     AutoUpdateEnabled: boolean;
-<<<<<<< HEAD
     CustomCSS: string;
     ShowRawOutput: boolean;
     APIKey: string;
@@ -477,9 +475,6 @@ export class Settings {
     PresencePenalty: number;
     FrequencyPenalty: number;
     ShowModelLoadStatus: boolean;
-=======
-    ClaudeDesktopUsed: boolean;
->>>>>>> v0.34.0
 
     constructor(source: any = {}) {
         if ('string' === typeof source) source = JSON.parse(source);
@@ -498,9 +493,7 @@ export class Settings {
         this.SelectedModel = source["SelectedModel"];
         this.SidebarOpen = source["SidebarOpen"];
         this.LastHomeView = source["LastHomeView"];
-        this.OnboardingVersion = source["OnboardingVersion"];
         this.AutoUpdateEnabled = source["AutoUpdateEnabled"];
-<<<<<<< HEAD
         this.CustomCSS = source["CustomCSS"];
         this.ShowRawOutput = source["ShowRawOutput"];
         this.APIKey = source["APIKey"];
@@ -522,9 +515,6 @@ export class Settings {
         this.PresencePenalty = source["PresencePenalty"];
         this.FrequencyPenalty = source["FrequencyPenalty"];
         this.ShowModelLoadStatus = source["ShowModelLoadStatus"];
-=======
-        this.ClaudeDesktopUsed = source["ClaudeDesktopUsed"];
->>>>>>> v0.34.0
     }
 }
 export class SettingsResponse {
