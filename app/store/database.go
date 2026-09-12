@@ -638,6 +638,14 @@ func (db *database) migrateV18ToV19() error {
 // API key, model display, title generation, MCP servers, PDF mode, system
 // message, sampling parameters, and model load status.
 func (db *database) migrateV19ToV20() error {
+	// Safety net: upstream v16→v17 adds onboarding_version, but existing fork
+	// users at schema 19 skipped that migration (fork's v16→v17 added different
+	// columns). Add it here if missing.
+	_, err := db.conn.Exec(`ALTER TABLE settings ADD COLUMN onboarding_version INTEGER NOT NULL DEFAULT 1`)
+	if err != nil && !duplicateColumnError(err) {
+		return fmt.Errorf("add onboarding_version column: %w", err)
+	}
+
 	// Token stats columns (fork feature, originally added in fork v16→v17)
 	msgStmts := []struct{ col, typ string }{
 		{"eval_count", "INTEGER"},
@@ -681,7 +689,7 @@ func (db *database) migrateV19ToV20() error {
 		}
 	}
 
-	_, err := db.conn.Exec(`UPDATE settings SET schema_version = 20`)
+	_, err = db.conn.Exec(`UPDATE settings SET schema_version = 20`)
 	if err != nil {
 		return fmt.Errorf("update schema version: %w", err)
 	}
