@@ -132,6 +132,8 @@ declare global {
     drag?: () => void;
     doubleClick?: () => void;
     exportChat?: (chatId: string) => void;
+    exportAllChats?: () => void;
+    importChats?: () => void;
     activateOllama?: () => void;
     getClaudeDesktopStatus?: () => Promise<ClaudeDesktopStatus>;
     getClaudeDesktopConnectionSummary?: () => Promise<ClaudeDesktopStatus>;
