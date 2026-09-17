@@ -166,6 +166,11 @@ export const useMessageAutoscroll = ({
     setSpacerHeight(calculatedHeight);
   }, [getLastUserMessageIndex, isStreaming, isActiveInteraction]);
 
+  // Keep a stable ref so the observer effect can call the latest version
+  // without re-running on every messages change.
+  const updateSpacerHeightRef = useRef(updateSpacerHeight);
+  updateSpacerHeightRef.current = updateSpacerHeight;
+
   // Handle new user message submission
   const handleNewUserMessage = useCallback(() => {
     // Mark that we're expecting a new message and should scroll to it
@@ -182,7 +187,7 @@ export const useMessageAutoscroll = ({
 
       if (targetUserIndex >= 0) {
         requestAnimationFrame(() => {
-          updateSpacerHeight();
+          updateSpacerHeightRef.current();
           requestAnimationFrame(() => {
             scrollToMessage(targetUserIndex);
             pendingScrollToUserMessage.current = false;
@@ -198,7 +203,6 @@ export const useMessageAutoscroll = ({
     messages,
     getLastUserMessageIndex,
     scrollToMessage,
-    updateSpacerHeight,
     isStreaming,
   ]);
 
@@ -223,12 +227,13 @@ export const useMessageAutoscroll = ({
     }
   }, [chatId]);
 
-  // Recalculate spacer height when messages change
+  // Recalculate spacer height when messages change.
   useEffect(() => {
-    updateSpacerHeight();
-  }, [messages, updateSpacerHeight]);
+    updateSpacerHeightRef.current();
+  }, [messages]);
 
-  // Use ResizeObserver to handle dynamic content changes
+  // Attach observers once (on mount / chatId change) only. Decoupled from
+  // `messages` so streaming flushes don't tear down + rebuild observers.
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -256,13 +261,13 @@ export const useMessageAutoscroll = ({
 
       // For significant changes, update immediately
       if (hasSignificantChange || immediateUpdate) {
-        updateSpacerHeight();
+        updateSpacerHeightRef.current();
         immediateUpdate = false;
       } else {
         // For small changes (like streaming text), debounce
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
-          updateSpacerHeight();
+          updateSpacerHeightRef.current();
         }, 100);
       }
     });
@@ -281,7 +286,7 @@ export const useMessageAutoscroll = ({
 
       if (hasToggle) {
         immediateUpdate = true;
-        updateSpacerHeight();
+        updateSpacerHeightRef.current();
       }
     });
 
@@ -306,7 +311,8 @@ export const useMessageAutoscroll = ({
       resizeObserver.disconnect();
       mutationObserver.disconnect();
     };
-  }, [messages, updateSpacerHeight]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   // Track scroll position
   useEffect(() => {

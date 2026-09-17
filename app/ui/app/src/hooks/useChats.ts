@@ -66,7 +66,7 @@ export const useChat = (chatId: string) => {
       return response;
     },
     enabled: !!chatId && chatId !== "new",
-    staleTime: 1500,
+    staleTime: Infinity,
   });
 };
 

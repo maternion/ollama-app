@@ -34,12 +34,10 @@ export default function Thinking({
     }
   }, [activelyThinking]);
 
-  // Measure content height for animations.
-  // Attach the ResizeObserver once on mount and let it report size changes
-  // autonomously — recreating it on every `thinking` change (every token)
-  // was O(N) allocations/sec and defeated the observer's own change detection.
+  // Attach once; skip when there's nothing to animate.
   useEffect(() => {
     if (!contentRef.current) return;
+    if (isCollapsed && finishedThinking) return;
     const resizeObserver = new ResizeObserver(() => {
       if (contentRef.current) {
         setContentHeight(contentRef.current.scrollHeight);
@@ -47,7 +45,8 @@ export default function Thinking({
     });
     resizeObserver.observe(contentRef.current);
     return () => resizeObserver.disconnect();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCollapsed, finishedThinking]);
 
   // Position content to show bottom when collapsed. Re-run only when the
   // collapse state flips or the active/finished thinking phase changes,

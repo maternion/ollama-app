@@ -1,5 +1,5 @@
 import { createHighlighter } from "shiki";
-import type { ThemeRegistration } from "shiki";
+import type { ThemeRegistration, BundledLanguage } from "shiki";
 
 const oneLightTheme: ThemeRegistration = {
   name: "one-light",
@@ -127,6 +127,60 @@ const oneDarkTheme: ThemeRegistration = {
 
 export let highlighter: Awaited<ReturnType<typeof createHighlighter>> | null =
   null;
+
+// Map light theme token colors to dark theme equivalents. Token boundaries
+// are grammar-determined (same across themes), so we tokenize once with the
+// light theme and remap colors for dark mode via this lookup.
+const LIGHT_TO_DARK: Record<string, string> = {
+  "#a0a1a7": "#5c6370", // comment
+  "#a626a4": "#c678dd", // keyword / operator
+  "#50a14f": "#98c379", // string
+  "#4078f2": "#61afef", // function
+  "#c18401": "#d19a66", // numeric / attribute-name
+  "#e45649": "#e06c75", // variable / tag
+  "#383a42": "#abb2bf", // punctuation / default
+};
+
+const DARK_FOREGROUND = "#abb2bf";
+
+export function darkColorFor(lightColor: string): string {
+  return LIGHT_TO_DARK[lightColor] ?? DARK_FOREGROUND;
+}
+
+// LRU cache for tokenized code blocks, keyed by codeText + language.
+// Avoids re-tokenizing identical code on re-mounts / re-opens / re-renders.
+const TOKEN_CACHE_MAX = 256;
+const tokenCache = new Map<string, any>();
+
+function tokenCacheKey(codeText: string, lang: string): string {
+  return `${lang}\0${codeText}`;
+}
+
+export function getCachedTokens(codeText: string, lang: string): any | null {
+  if (!highlighter) return null;
+  const key = tokenCacheKey(codeText, lang);
+  const cached = tokenCache.get(key);
+  if (cached) {
+    // Move to end (most recently used)
+    tokenCache.delete(key);
+    tokenCache.set(key, cached);
+    return cached;
+  }
+  try {
+    const tokens = highlighter.codeToTokensBase(codeText, {
+      lang: lang as BundledLanguage,
+      theme: "one-light" as any,
+    });
+    if (tokenCache.size >= TOKEN_CACHE_MAX) {
+      tokenCache.delete(tokenCache.keys().next().value!);
+    }
+    tokenCache.set(key, tokens);
+    return tokens;
+  } catch (error) {
+    console.error("Failed to highlight code:", error);
+    return null;
+  }
+}
 
 export const highlighterPromise = createHighlighter({
   themes: [oneLightTheme, oneDarkTheme],

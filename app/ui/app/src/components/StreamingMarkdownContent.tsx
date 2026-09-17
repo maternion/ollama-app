@@ -9,8 +9,7 @@ import remarkMath from "remark-math";
 import remarkCitationParser from "@/utils/remarkCitationParser";
 import CopyButton from "./CopyButton";
 import CodePreview from "./CodePreview";
-import type { BundledLanguage } from "shiki";
-import { highlighter } from "@/lib/highlighter";
+import { getCachedTokens, darkColorFor } from "@/lib/highlighter";
 import { EyeIcon } from "@heroicons/react/24/outline";
 
 interface StreamingMarkdownContentProps {
@@ -52,26 +51,10 @@ const CodeBlock = React.memo(
 
     const [previewOpen, setPreviewOpen] = React.useState(false);
 
-    // Synchronously highlight code using the pre-loaded highlighter
-    const tokens = React.useMemo(() => {
-      if (!highlighter) return null;
-
-      try {
-        return {
-          light: highlighter.codeToTokensBase(codeText, {
-            lang: language as BundledLanguage,
-            theme: "one-light" as any,
-          }),
-          dark: highlighter.codeToTokensBase(codeText, {
-            lang: language as BundledLanguage,
-            theme: "one-dark" as any,
-          }),
-        };
-      } catch (error) {
-        console.error("Failed to highlight code:", error);
-        return null;
-      }
-    }, [codeText, language]);
+    // Single-theme tokenization with LRU cache. Tokenize once with the light
+    // theme; dark mode remaps colors via darkColorFor. Halves the cost and
+    // skips re-tokenizing identical code on re-mounts / re-opens.
+    const tokens = React.useMemo(() => getCachedTokens(codeText, language), [codeText, language]);
 
     return (
       <div className="relative bg-neutral-100 dark:bg-neutral-800 rounded-2xl overflow-hidden my-6">
@@ -102,42 +85,35 @@ const CodeBlock = React.memo(
         {/* Light mode */}
         <pre className="dark:hidden m-0 bg-neutral-100 text-sm overflow-x-auto p-4">
           <code className="font-mono text-sm">
-            {tokens?.light
-              ? tokens.light.map((line: any, i: number) => (
+            {tokens
+              ? tokens.map((line: any, i: number) => (
                   <React.Fragment key={i}>
                     {line.map((token: any, j: number) => (
-                      <span
-                        key={j}
-                        style={{
-                          color: token.color,
-                        }}
-                      >
+                      <span key={j} style={{ color: token.color }}>
                         {token.content}
                       </span>
                     ))}
-                    {i < tokens.light.length - 1 && "\n"}
+                    {i < tokens.length - 1 && "\n"}
                   </React.Fragment>
                 ))
               : codeText}
           </code>
         </pre>
-        {/* Dark mode */}
+        {/* Dark mode (same tokens, remapped colors) */}
         <pre className="hidden dark:block m-0 bg-neutral-800 text-sm overflow-x-auto p-4">
           <code className="font-mono text-sm">
-            {tokens?.dark
-              ? tokens.dark.map((line: any, i: number) => (
+            {tokens
+              ? tokens.map((line: any, i: number) => (
                   <React.Fragment key={i}>
                     {line.map((token: any, j: number) => (
                       <span
                         key={j}
-                        style={{
-                          color: token.color,
-                        }}
+                        style={{ color: darkColorFor(token.color) }}
                       >
                         {token.content}
                       </span>
                     ))}
-                    {i < tokens.dark.length - 1 && "\n"}
+                    {i < tokens.length - 1 && "\n"}
                   </React.Fragment>
                 ))
               : codeText}
@@ -347,9 +323,11 @@ class StreamingMarkdownErrorBoundary extends React.Component<
   }
 
   componentDidUpdate(prevProps: StreamingMarkdownErrorBoundaryProps) {
+    // Only reset when actually in error; avoids per-token setState + O(N) string compare.
     if (
-      prevProps.isStreaming !== this.props.isStreaming ||
-      prevProps.content !== this.props.content
+      this.state.hasError &&
+      (prevProps.isStreaming !== this.props.isStreaming ||
+        prevProps.content !== this.props.content)
     ) {
       this.setState({ hasError: false });
     }
