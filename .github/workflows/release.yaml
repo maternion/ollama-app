@@ -26,7 +26,12 @@ jobs:
 
 <<<<<<< HEAD
   linux-app:
-    runs-on: ubuntu-latest
+    # Pin to 22.04 so the AppImage's bundled GTK/WebKit libs link against
+    # glibc 2.35. ubuntu-latest (24.04) produces libs requiring GLIBC_2.38,
+    # which crash instantly on any 22.04-based distro (e.g. Pop!_OS 22.04).
+    # Nothing in the code needs a newer base (cgo deps are gtk+-3.0 /
+    # webkit2gtk-4.1, both in jammy).
+    runs-on: ubuntu-22.04
 =======
   darwin-build:
     runs-on: macos-26-xlarge
