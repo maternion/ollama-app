@@ -4,6 +4,8 @@ import {
   defaultRehypePlugins,
   defaultRemarkPlugins,
 } from "streamdown";
+import type { Pluggable } from "unified";
+import remarkMath from "remark-math";
 import remarkCitationParser from "@/utils/remarkCitationParser";
 import CopyButton from "./CopyButton";
 import CodePreview from "./CodePreview";
@@ -154,11 +156,17 @@ const CodeBlock = React.memo(
 
 const StreamingMarkdownContent: React.FC<StreamingMarkdownContentProps> =
   React.memo(({ content, isStreaming = false, size, browserToolResult }) => {
-    // Build the remark plugins array - keep default GFM and Math, add citations
-    const remarkPlugins = React.useMemo(() => {
+    // Build the remark plugins array - keep default GFM and Math, add citations.
+    // Override the math plugin to enable single-dollar inline math ($...$),
+    // which is what models typically emit in free-form reasoning/thinking.
+    // streamdown's default sets singleDollarTextMath:false, leaving inline
+    // $...$ as literal text. Enabling it has the trade-off that literal $
+    // signs in prose may be misparsed as math; invalid math falls back to
+    // raw text via the StreamingMarkdownErrorBoundary below.
+    const remarkPlugins = React.useMemo<Pluggable[]>(() => {
       return [
         defaultRemarkPlugins.gfm,
-        defaultRemarkPlugins.math,
+        [remarkMath, { singleDollarTextMath: true }] as Pluggable,
         remarkCitationParser,
       ];
     }, []);
