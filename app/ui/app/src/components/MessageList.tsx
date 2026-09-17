@@ -4,6 +4,11 @@ import Message from "./Message";
 import Downloading from "./Downloading";
 import { ErrorMessage } from "./ErrorMessage";
 
+// Lazy-mount threshold: only render messages within this many indices of the
+// last message eagerly; others mount via IntersectionObserver when scrolled
+// into view. This avoids parsing N Streamdown instances on chat open.
+const LAZY_MOUNT_THRESHOLD = 4;
+
 export default function MessageList({
   messages,
   spacerHeight,
@@ -28,6 +33,10 @@ export default function MessageList({
   const [showDots, setShowDots] = React.useState(false);
   const isDownloadingModel = downloadProgress && !downloadProgress.done;
   const shouldShowDownload = messages.length > 0;
+  const [visibleIndices, setVisibleIndices] = React.useState<Set<number>>(
+    new Set(),
+  );
+  const lastIdx = messages.length - 1;
 
   React.useEffect(() => {
     let timer: number;
@@ -39,7 +48,7 @@ export default function MessageList({
     ) {
       timer = window.setTimeout(() => {
         setShowDots(true);
-      }, 750); // Wait 750ms before showing dots
+      }, 750);
     } else {
       setShowDots(false);
     }
@@ -47,9 +56,6 @@ export default function MessageList({
     return () => window.clearTimeout(timer);
   }, [isStreaming, isWaitingForLoad, isDownloadingModel, messages]);
 
-  const lastIdx = messages.length - 1;
-
-  // Memoize the last tool query (web_search query or web_fetch url) at each message index
   const lastToolQueries = React.useMemo(() => {
     const queries: (string | undefined)[] = [];
     let lastQuery: string | undefined = undefined;
@@ -82,6 +88,12 @@ export default function MessageList({
     return queries;
   }, [messages]);
 
+  // Lazy-mount: a message should render eagerly if it's within the threshold
+  // of the end (so streaming + recent context are visible) or if it has been
+  // revealed by the IntersectionObserver.
+  const shouldRender = (idx: number) =>
+    idx >= lastIdx - LAZY_MOUNT_THRESHOLD || visibleIndices.has(idx);
+
   return (
     <div
       className="mx-auto flex max-w-[768px] flex-1 flex-col px-6 pb-12 select-text"
@@ -89,19 +101,48 @@ export default function MessageList({
     >
       {messages.map((message, idx) => {
         const lastToolQuery = lastToolQueries[idx];
+        const render = shouldRender(idx);
         return (
-          <div key={`${message.created_at}-${idx}`} data-message-index={idx}>
-            <Message
-              message={message}
-              onEditMessage={onEditMessage}
-              messageIndex={idx}
-              isStreaming={isStreaming && idx === lastIdx}
-              isFaded={
-                editingMessageIndex !== undefined && idx >= editingMessageIndex
-              }
-              browserToolResult={browserToolResult}
-              lastToolQuery={lastToolQuery}
-            />
+          <div
+            key={`${message.created_at}-${idx}`}
+            data-message-index={idx}
+            ref={
+              !render
+                ? (el) => {
+                  if (el && !visibleIndices.has(idx)) {
+                    const observer = new IntersectionObserver(
+                      (entries) => {
+                        if (entries[0]?.isIntersecting) {
+                          setVisibleIndices((prev) => {
+                            const next = new Set(prev);
+                            next.add(idx);
+                            return next;
+                          });
+                          observer.disconnect();
+                        }
+                      },
+                      { rootMargin: "200px" },
+                    );
+                    observer.observe(el);
+                  }
+                }
+                : undefined
+            }
+            style={!render ? { minHeight: 100 } : undefined}
+          >
+            {render && (
+              <Message
+                message={message}
+                onEditMessage={onEditMessage}
+                messageIndex={idx}
+                isStreaming={isStreaming && idx === lastIdx}
+                isFaded={
+                  editingMessageIndex !== undefined && idx >= editingMessageIndex
+                }
+                browserToolResult={browserToolResult}
+                lastToolQuery={lastToolQuery}
+              />
+            )}
           </div>
         );
       })}
@@ -139,7 +180,6 @@ export default function MessageList({
       )}
 
       {/* Downloading model */}
-      {/* Only show for models larger than 1KiB */}
       {downloadProgress?.total && downloadProgress.total > 1024 && (
         <section
           className={`
@@ -161,7 +201,6 @@ export default function MessageList({
         </section>
       )}
 
-      {/* Dynamic spacer to allow scrolling the last message to the top of the container */}
       <div style={{ height: `${spacerHeight}px` }} aria-hidden="true" />
     </div>
   );
