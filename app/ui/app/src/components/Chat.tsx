@@ -4,6 +4,7 @@ import { FileUpload } from "./FileUpload";
 import { DisplayUpgrade } from "./DisplayUpgrade";
 import { DisplayStale } from "./DisplayStale";
 import { DisplayLogin } from "./DisplayLogin";
+import { UpdateBanner } from "./UpdateBanner";
 import {
   useChat,
   useSendMessage,
@@ -28,6 +29,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useSelectedModel } from "@/hooks/useSelectedModel";
 import { useUser } from "@/hooks/useUser";
 import { useHasVisionCapability } from "@/hooks/useModelCapabilities";
+import { useChatSettings } from "@/contexts/ChatSettingsContext";
 import { Message } from "@/gotypes";
 
 export default function Chat({ chatId }: { chatId: string }) {
@@ -36,11 +38,13 @@ export default function Chat({ chatId }: { chatId: string }) {
   const chatQuery = useChat(chatId === "new" ? "" : chatId);
   const chatErrorQuery = useChatError(chatId === "new" ? "" : chatId);
   const { selectedModel } = useSelectedModel(chatId);
+  const { migrateChatSettings } = useChatSettings();
   const { user } = useUser();
   const hasVisionCapability = useHasVisionCapability(selectedModel?.model);
   const shouldShowStaleDisplay = useShouldShowStaleDisplay(selectedModel);
   const dismissStaleModel = useDismissStaleModel();
   const { isHealthy } = useHealth();
+  const sendMessageMutation = useSendMessage(chatId);
 
   const [editingMessage, setEditingMessage] = useState<{
     content: string;
@@ -100,8 +104,6 @@ export default function Chat({ chatId }: { chatId: string }) {
     setEditingMessage(null);
   }, [chatId]);
 
-  const sendMessageMutation = useSendMessage(chatId);
-
   const { containerRef, handleNewUserMessage, spacerHeight } =
     useMessageAutoscroll({
       messages,
@@ -133,6 +135,8 @@ export default function Chat({ chatId }: { chatId: string }) {
       webSearch?: boolean;
       fileTools?: boolean;
       think?: boolean | string;
+      format?: string;
+      systemMessage?: string;
     },
   ) => {
     // Clear any existing errors when sending a new message
@@ -154,8 +158,12 @@ export default function Chat({ chatId }: { chatId: string }) {
       webSearch: options.webSearch,
       fileTools: options.fileTools,
       think: options.think,
+      format: options.format,
+      systemMessage: options.systemMessage,
       onChatEvent: (event) => {
         if (event.eventName === "chat_created" && event.chatId) {
+          // Move per-chat settings from "new" to the real chat id
+          migrateChatSettings(chatId, event.chatId);
           navigate({
             to: "/c/$chatId",
             params: {
@@ -240,6 +248,9 @@ export default function Chat({ chatId }: { chatId: string }) {
           </section>
 
           <div className="flex-shrink-0 sticky bottom-0 z-20">
+            <div className="pb-2">
+              <UpdateBanner />
+            </div>
             {selectedModel && shouldShowStaleDisplay && (
               <div className="pb-2">
                 <DisplayStale

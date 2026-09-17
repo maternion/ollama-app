@@ -4,6 +4,8 @@ import StreamingMarkdownContent from "./StreamingMarkdownContent";
 import { ImageThumbnail } from "./ImageThumbnail";
 import { isImageFile } from "@/utils/imageUtils";
 import CopyButton from "./CopyButton";
+import { useSettings } from "@/hooks/useSettings";
+import { SystemMessage } from "@/components/SystemMessage";
 import React, { useState, useMemo, useRef } from "react";
 
 const Message = React.memo(
@@ -25,6 +27,15 @@ const Message = React.memo(
     browserToolResult?: BrowserToolResult;
     lastToolQuery?: string;
   }) => {
+    const { settings: displaySettings } = useSettings();
+    const showSystemMessage =
+      (displaySettings as any)?.showSystemMessage ?? false;
+
+    if (message.role === "system") {
+      if (!showSystemMessage) return null;
+      return <SystemMessage message={message} />;
+    }
+
     if (message.role === "user") {
       return (
         <UserMessage
@@ -890,6 +901,9 @@ function OtherRoleMessage({
   lastToolQuery?: string;
 }) {
   const messageRef = useRef<HTMLDivElement>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const { settings: displaySettings } = useSettings();
+  const showRawOutput = (displaySettings as any)?.showRawOutput ?? false;
 
   return (
     <div
@@ -930,7 +944,11 @@ function OtherRoleMessage({
               id="message-container"
               ref={messageRef}
             >
-              {message.role === "tool" ? (
+              {showRawOutput && showRaw && message.role !== "tool" && message.content ? (
+                <pre className="whitespace-pre-wrap break-words text-sm max-w-full font-mono">
+                  {message.content}
+                </pre>
+              ) : message.role === "tool" ? (
                 <ToolRoleContent
                   message={message}
                   browserToolResult={browserToolResult}
@@ -973,7 +991,7 @@ function OtherRoleMessage({
         message.content.trim() &&
         (!message.tool_calls || message.tool_calls.length === 0) &&
         !message.tool_call && (
-          <div className="-ml-1">
+          <div className="flex items-center gap-2 -ml-1">
             <CopyButton
               content={message.content || ""}
               copyRef={messageRef as React.RefObject<HTMLElement>}
@@ -983,6 +1001,24 @@ function OtherRoleMessage({
               className="copy-button z-10 text-neutral-500 dark:text-neutral-400"
               title="Copy"
             />
+            {showRawOutput && (
+              <button
+                onClick={() => setShowRaw(!showRaw)}
+                className="text-neutral-500 dark:text-neutral-400 text-sm hover:text-neutral-700 dark:hover:text-neutral-200"
+                title={showRaw ? "Show formatted" : "Show raw text"}
+              >
+                {showRaw ? "Markdown" : "Raw"}
+              </button>
+            )}
+            {((message as any).evalCount != null || (message as any).tokensPerSecond != null || (message as any).evalDuration != null) && (
+              <span className="text-sm text-neutral-400 dark:text-neutral-500 select-none">
+                {(message as any).evalDuration != null && `${(message as any).evalDuration}`}
+                {(message as any).evalDuration != null && (message as any).tokensPerSecond != null && " \u00B7 "}
+                {(message as any).tokensPerSecond != null && `${(message as any).tokensPerSecond.toFixed(1)} tok/s`}
+                {((message as any).evalDuration != null || (message as any).tokensPerSecond != null) && (message as any).evalCount != null && " \u00B7 "}
+                {(message as any).evalCount != null && `${(message as any).evalCount} tokens`}
+              </span>
+            )}
           </div>
         )}
     </div>

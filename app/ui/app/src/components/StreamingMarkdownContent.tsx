@@ -6,8 +6,10 @@ import {
 } from "streamdown";
 import remarkCitationParser from "@/utils/remarkCitationParser";
 import CopyButton from "./CopyButton";
+import CodePreview from "./CodePreview";
 import type { BundledLanguage } from "shiki";
 import { highlighter } from "@/lib/highlighter";
+import { EyeIcon } from "@heroicons/react/24/outline";
 
 interface StreamingMarkdownContentProps {
   content: string;
@@ -46,6 +48,8 @@ const CodeBlock = React.memo(
       codeElement.props.className?.replace(/language-/, "") || "";
     const codeText = extractText(codeElement.props.children);
 
+    const [previewOpen, setPreviewOpen] = React.useState(false);
+
     // Synchronously highlight code using the pre-loaded highlighter
     const tokens = React.useMemo(() => {
       if (!highlighter) return null;
@@ -75,11 +79,23 @@ const CodeBlock = React.memo(
               {language}
             </div>
           )}
-          <CopyButton
-            content={codeText}
-            showLabels={true}
-            className="copy-button text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 ml-auto"
-          />
+          <div className="flex items-center gap-1 ml-auto">
+            {language.toLowerCase() === "html" && (
+              <button
+                onClick={() => setPreviewOpen(true)}
+                className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2 py-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+                title="Preview code"
+              >
+                <EyeIcon className="size-3.5" />
+                Preview
+              </button>
+            )}
+            <CopyButton
+              content={codeText}
+              showLabels={true}
+              className="copy-button text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800"
+            />
+          </div>
         </div>
         {/* Light mode */}
         <pre className="dark:hidden m-0 bg-neutral-100 text-sm overflow-x-auto p-4">
@@ -125,6 +141,12 @@ const CodeBlock = React.memo(
               : codeText}
           </code>
         </pre>
+        <CodePreview
+          open={previewOpen}
+          code={codeText}
+          language={language}
+          onOpenChange={setPreviewOpen}
+        />
       </div>
     );
   },

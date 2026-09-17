@@ -1,8 +1,24 @@
 import Logo from "@/components/Logo";
 import { ModelPicker } from "@/components/ModelPicker";
-import { WebSearchButton } from "@/components/WebSearchButton";
 import { ImageThumbnail } from "@/components/ImageThumbnail";
-import { isImageFile } from "@/utils/imageUtils";
+import { AudioThumbnail } from "@/components/AudioThumbnail";
+import { UpdateBanner } from "@/components/UpdateBanner";
+import { isImageFile, isAudioFile } from "@/utils/imageUtils";
+import { processFiles } from "@/utils/fileValidation";
+import {
+  useHasVisionCapability,
+  useHasToolsCapability,
+  useHasAudioCapability,
+} from "@/hooks/useModelCapabilities";
+import { useUser } from "@/hooks/useUser";
+import { DisplayLogin } from "@/components/DisplayLogin";
+import { ErrorEvent, Message } from "@/gotypes";
+import { useSettings } from "@/hooks/useSettings";
+import { useCloudStatus } from "@/hooks/useCloudStatus";
+import { useChatSettings } from "@/contexts/ChatSettingsContext";
+// @ts-ignore - ChatFormAddButton is created by another agent in parallel
+import { ChatFormAddButton } from "@/components/ChatFormAddButton";
+import { ErrorMessage } from "./ErrorMessage";
 import {
   useRef,
   useState,
@@ -17,22 +33,9 @@ import {
 } from "@/hooks/useChats";
 import { useNavigate } from "@tanstack/react-router";
 import { useSelectedModel } from "@/hooks/useSelectedModel";
-import {
-  useHasVisionCapability,
-  useHasToolsCapability,
-} from "@/hooks/useModelCapabilities";
-import { useUser } from "@/hooks/useUser";
-import { DisplayLogin } from "@/components/DisplayLogin";
-import { ErrorEvent, Message } from "@/gotypes";
-import { useSettings } from "@/hooks/useSettings";
-import { useCloudStatus } from "@/hooks/useCloudStatus";
-import { ThinkButton } from "./ThinkButton";
-import { ErrorMessage } from "./ErrorMessage";
-import { processFiles } from "@/utils/fileValidation";
-import type { ImageData } from "@/types/webview";
-import { PlusIcon } from "@heroicons/react/24/outline";
+import { useDraft } from "@/contexts/DraftContext";
 
-export type ThinkingLevel = "low" | "medium" | "high";
+export type ThinkingLevel = "off" | "low" | "medium" | "high" | "max";
 
 interface FileAttachment {
   filename: string;
@@ -60,6 +63,8 @@ interface ChatFormProps {
       webSearch?: boolean;
       fileTools?: boolean;
       think?: boolean | string;
+      format?: string;
+      systemMessage?: string;
     },
   ) => void;
   autoFocus?: boolean;
@@ -97,6 +102,7 @@ function ChatForm({
     attachments: [],
     fileErrors: [],
   });
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const compositionEndTimeoutRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,7 +119,9 @@ function ChatForm({
   const cancelMessage = useCancelMessage();
   const isDownloading = isDownloadingModel;
   const { selectedModel } = useSelectedModel();
+  const { getDraft, saveDraft, clearDraft } = useDraft();
   const hasVisionCapability = useHasVisionCapability(selectedModel?.model);
+  const hasAudioCapability = useHasAudioCapability(selectedModel?.model);
   const { isAuthenticated, isLoading: isLoadingUser } = useUser();
   const [loginPromptFeature, setLoginPromptFeature] = useState<
     "webSearch" | "turbo" | null
@@ -121,16 +129,8 @@ function ChatForm({
   const [fileUploadError, setFileUploadError] = useState<ErrorEvent | null>(
     null,
   );
-
-  const handleThinkingLevelDropdownToggle = (isOpen: boolean) => {
-    if (
-      isOpen &&
-      modelPickerRef.current &&
-      (modelPickerRef.current as any).closeDropdown
-    ) {
-      (modelPickerRef.current as any).closeDropdown();
-    }
-  };
+  const messageRef = useRef(message);
+  messageRef.current = message;
 
   const handleModelPickerDropdownToggle = (isOpen: boolean) => {
     if (
@@ -143,24 +143,45 @@ function ChatForm({
   };
 
   const {
-    settings: {
-      webSearchEnabled,
-      thinkEnabled,
-      thinkLevel: settingsThinkLevel,
-    },
+    settings,
     setSettings,
   } = useSettings();
+  const {
+    thinkEnabled,
+  } = settings;
   const { cloudDisabled } = useCloudStatus();
+  const { getChatSettings, updateChatSettings, migrateChatSettings } = useChatSettings();
+  const chatSettings = getChatSettings(chatId);
+  const systemMessage = chatSettings.systemMessage;
+  const schemaActive = chatSettings.schemaActive;
+  const jsonSchema = chatSettings.schema;
+  const thinkLevel: ThinkingLevel = chatSettings.thinkLevel as ThinkingLevel;
+  const webSearchEnabled = chatSettings.webSearchEnabled;
+
+  const setSystemMessage = (value: string) => {
+    updateChatSettings(chatId, { systemMessage: value });
+  };
+
+  const toggleSchema = () => {
+    const current = getChatSettings(chatId);
+    updateChatSettings(chatId, {
+      schemaActive: !current.schemaActive,
+      schema: current.schemaActive ? "" : current.schema,
+    });
+  };
+
+  const setJsonSchema = (value: string) => {
+    updateChatSettings(chatId, {
+      schema: value,
+      schemaActive: value.trim() ? true : false,
+    });
+  };
+
+  const setThinkingLevel = (newLevel: ThinkingLevel) => {
+    updateChatSettings(chatId, { thinkLevel: newLevel });
+  };
 
   const supportsWebSearch = useHasToolsCapability(selectedModel?.model);
-  // Use per-chat thinking level instead of global
-  const thinkLevel: ThinkingLevel =
-    settingsThinkLevel === "none" || !settingsThinkLevel
-      ? "medium"
-      : (settingsThinkLevel as ThinkingLevel);
-  const setThinkingLevel = (newLevel: ThinkingLevel) => {
-    setSettings({ ThinkLevel: newLevel });
-  };
 
   const modelSupportsThinkingLevels =
     selectedModel?.model.toLowerCase().startsWith("gpt-oss") || false;
@@ -169,21 +190,22 @@ function ChatForm({
 
   useEffect(() => {
     if (supportsThinkToggling && thinkEnabled && webSearchEnabled) {
-      setSettings({ WebSearchEnabled: false });
+      updateChatSettings(chatId, { webSearchEnabled: false });
     }
   }, [
     selectedModel?.model,
     supportsThinkToggling,
     thinkEnabled,
     webSearchEnabled,
-    setSettings,
+    chatId,
+    updateChatSettings,
   ]);
 
   useEffect(() => {
     if (cloudDisabled && webSearchEnabled) {
-      setSettings({ WebSearchEnabled: false });
+      updateChatSettings(chatId, { webSearchEnabled: false });
     }
-  }, [cloudDisabled, webSearchEnabled, setSettings]);
+  }, [cloudDisabled, webSearchEnabled, chatId, updateChatSettings]);
 
   const removeFile = (index: number) => {
     setMessage((prev) => ({
@@ -314,9 +336,26 @@ function ChatForm({
     }
   }, [editingMessage]);
 
-  // Clear composition and reset textarea height when chatId changes
+  // Save draft on unmount or when chatId changes
   useEffect(() => {
-    resetChatForm();
+    return () => {
+      saveDraft(chatId, messageRef.current.content);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  // Restore draft (or clear) when chatId changes or on mount
+  useEffect(() => {
+    const draft = getDraft(chatId);
+    if (draft) {
+      setMessage((prev) => ({ ...prev, content: draft }));
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    } else {
+      resetChatForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
   // Auto-focus textarea when autoFocus is true or when streaming completes (but not when editing)
@@ -469,7 +508,7 @@ function ChatForm({
   }, [isStreaming, editingMessage, onCancelEdit, navigateToNextElement]);
 
   const handleSubmit = async () => {
-    if (!message.content.trim() || isStreaming || isDownloading) return;
+    if (!message.content.trim() || isDownloading) return;
 
     if (cloudDisabled && selectedModel?.isCloud()) {
       return;
@@ -480,10 +519,23 @@ function ChatForm({
       return;
     }
 
+    // If currently streaming, queue the message instead of sending immediately.
+    // The pending message is drained automatically when streaming completes.
+    if (isStreaming) {
+      setPendingMessage(message.content);
+      setMessage({ content: "", attachments: [], fileErrors: [] });
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+      return;
+    }
+
     // Prepare attachments for submission, excluding unsupported images
     const attachmentsToSend: FileAttachment[] = message.attachments
       .filter(
-        (att) => hasVisionCapability || !isImageFile(att.filename),
+        (att) =>
+          (hasVisionCapability || !isImageFile(att.filename)) &&
+          (hasAudioCapability || !isAudioFile(att.filename)),
       )
       .map((att) => ({
         filename: att.filename,
@@ -493,10 +545,18 @@ function ChatForm({
     const useWebSearch =
       supportsWebSearch && webSearchEnabled && !cloudDisabled;
     const useThink = modelSupportsThinkingLevels
-      ? thinkLevel
+      ? thinkLevel === "off"
+        ? false
+        : thinkLevel
       : supportsThinkToggling
         ? thinkEnabled
         : undefined;
+    // Cloud models don't support structured outputs — don't send format
+    const useFormat =
+      schemaActive && jsonSchema && !selectedModel?.isCloud()
+        ? jsonSchema
+        : undefined;
+    const useSystemMessage = systemMessage || undefined;
 
     if (onSubmit) {
       onSubmit(message.content, {
@@ -504,6 +564,8 @@ function ChatForm({
         index: undefined,
         webSearch: useWebSearch,
         think: useThink,
+        format: useFormat,
+        systemMessage: useSystemMessage,
       });
     } else {
       sendMessageMutation({
@@ -511,8 +573,12 @@ function ChatForm({
         attachments: attachmentsToSend,
         webSearch: useWebSearch,
         think: useThink,
+        format: useFormat,
+        systemMessage: useSystemMessage,
         onChatEvent: (event) => {
           if (event.eventName === "chat_created" && event.chatId) {
+            // Move per-chat settings from "new" to the real chat id
+            migrateChatSettings(chatId, event.chatId);
             navigate({
               to: "/c/$chatId",
               params: {
@@ -530,6 +596,7 @@ function ChatForm({
       attachments: [],
       fileErrors: [],
     });
+    clearDraft(chatId);
 
     // Reset textarea height and refocus after submit
     setTimeout(() => {
@@ -540,11 +607,31 @@ function ChatForm({
     }, 100);
   };
 
+  // Keep a ref to the latest handleSubmit so the drain effect below can
+  // invoke it without stale closures.
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  // Auto-send the queued (pending) message once streaming completes.
+  // When streaming transitions from active to inactive and a pending message
+  // exists, submit it automatically.
+  useEffect(() => {
+    if (!isStreaming && pendingMessage && !isDownloading) {
+      const queued = pendingMessage;
+      setPendingMessage(null);
+      setMessage({ content: queued, attachments: [], fileErrors: [] });
+      // Submit on next tick so the state update is applied first.
+      setTimeout(() => {
+        handleSubmitRef.current();
+      }, 0);
+    }
+  }, [isStreaming, pendingMessage, isDownloading]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Enter to submit
     if (e.key === "Enter" && !e.shiftKey && !isEditing) {
       e.preventDefault();
-      if (!isStreaming && !isDownloading) {
+      if (!isDownloading) {
         handleSubmit();
       }
       return;
@@ -610,14 +697,16 @@ function ChatForm({
     }, 0);
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+    const { validFiles, errors } = await processFiles(Array.from(files), {
+      hasVisionCapability,
+      hasAudioCapability,
+      pdfAsImages: settings.pdfMode === "images",
     });
+    handleFilesReceived(validFiles, errors);
 
     // Reset file input
     if (e.target) {
@@ -634,65 +723,14 @@ function ChatForm({
     e.target.style.height = Math.min(e.target.scrollHeight, 24 * 8) + "px";
   };
 
-  const handleFilesUpload = async () => {
-    try {
-      setFileUploadError(null);
-
-      const results = await window.webview?.selectMultipleFiles();
-      if (results && results.length > 0) {
-        // Convert native dialog results to File objects
-        const files = results
-          .map((result: ImageData) => {
-            if (result.dataURL) {
-              // Convert dataURL back to File object
-              const base64Data = result.dataURL.split(",")[1];
-              const mimeType = result.dataURL.split(";")[0].split(":")[1];
-              const binaryString = atob(base64Data);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-
-              const blob = new Blob([bytes], { type: mimeType });
-              const file = new File([blob], result.filename, {
-                type: mimeType,
-              });
-              return file;
-            }
-            return null;
-          })
-          .filter(Boolean) as File[];
-
-        if (files.length > 0) {
-          const { validFiles, errors } = await processFiles(files, {
-            selectedModel,
-            hasVisionCapability,
-          });
-
-          // Send processed files and errors to the same handler as FileUpload
-          if (validFiles.length > 0 || errors.length > 0) {
-            handleFilesReceived(validFiles, errors);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error selecting multiple files:", error);
-
-      const errorEvent = new ErrorEvent({
-        eventName: "error" as const,
-        error:
-          error instanceof Error ? error.message : "Failed to select files",
-        code: "file_selection_error",
-        details:
-          "An error occurred while trying to open the file selection dialog. Please try again.",
-      });
-
-      setFileUploadError(errorEvent);
-    }
-  };
   return (
     <div className={`pb-3 px-3 ${hasMessages ? "mt-auto" : "my-auto"}`}>
       {chatId === "new" && <Logo />}
+      {chatId === "new" && (
+        <div className="mb-4">
+          <UpdateBanner />
+        </div>
+      )}
 
       {shouldShowLoginBanner && (
         <DisplayLogin
@@ -714,7 +752,7 @@ function ChatForm({
           className="mb-4"
           onDismiss={() => {
             // Disable the active features when dismissing
-            if (webSearchEnabled) setSettings({ WebSearchEnabled: false });
+            if (webSearchEnabled) updateChatSettings(chatId, { webSearchEnabled: false });
             setLoginPromptFeature(null);
           }}
         />
@@ -738,14 +776,17 @@ function ChatForm({
         )}
         {(message.attachments.length > 0 || message.fileErrors.length > 0) && (
           <div className="flex gap-2 overflow-x-auto px-3 pt pb-3 w-full scrollbar-hide">
-            {message.attachments.map((attachment, index) => {
+            {message.attachments.map((attachment: { id: string; filename: string; data?: Uint8Array }, index: number) => {
               const isUnsupportedImage =
                 !hasVisionCapability && isImageFile(attachment.filename);
+              const isUnsupportedAudio =
+                !hasAudioCapability && isAudioFile(attachment.filename);
+              const isUnsupported = isUnsupportedImage || isUnsupportedAudio;
               return (
               <div
                 key={attachment.id}
                 className={`group flex items-center gap-2 py-2 px-3 rounded-lg transition-colors flex-shrink-0 ${
-                  isUnsupportedImage
+                  isUnsupported
                     ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
                     : "bg-neutral-50 dark:bg-neutral-700/50 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 }`}
@@ -758,6 +799,8 @@ function ChatForm({
                     }}
                     className="w-8 h-8 object-cover rounded-md flex-shrink-0"
                   />
+                ) : isAudioFile(attachment.filename) ? (
+                  <AudioThumbnail className="w-8 h-8" />
                 ) : (
                   <svg
                     className="w-4 h-4 text-neutral-400 dark:text-neutral-500 flex-shrink-0"
@@ -774,12 +817,17 @@ function ChatForm({
                   </svg>
                 )}
                 <div className="flex flex-col min-w-0">
-                  <span className={`text-sm max-w-36 truncate ${isUnsupportedImage ? "text-red-700 dark:text-red-300" : "text-neutral-700 dark:text-neutral-300"}`}>
+                  <span className={`text-sm max-w-36 truncate ${isUnsupported ? "text-red-700 dark:text-red-300" : "text-neutral-700 dark:text-neutral-300"}`}>
                     {attachment.filename}
                   </span>
                   {isUnsupportedImage && (
                     <span className="text-xs text-red-600 dark:text-red-400 opacity-75">
                       This model does not support images
+                    </span>
+                  )}
+                  {isUnsupportedAudio && (
+                    <span className="text-xs text-red-600 dark:text-red-400 opacity-75">
+                      This model does not support audio
                     </span>
                   )}
                 </div>
@@ -806,7 +854,7 @@ function ChatForm({
               </div>
               );
             })}
-            {message.fileErrors.map((fileError, index) => (
+            {message.fileErrors.map((fileError: { filename: string; error: string }, index: number) => (
               <div
                 key={`error-${index}`}
                 className="group flex items-center gap-2 py-2 px-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex-shrink-0"
@@ -855,6 +903,21 @@ function ChatForm({
           </div>
         )}
 
+        {pendingMessage && (
+          <div className="px-3 py-2 mb-2 mx-5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-sm text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-between">
+              <span className="truncate">Queued: {pendingMessage}</span>
+              <button
+                onClick={() => setPendingMessage(null)}
+                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 ml-2 flex-shrink-0"
+                aria-label="Cancel queued message"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="relative w-full px-5">
           <textarea
             ref={textareaRef}
@@ -873,80 +936,55 @@ function ChatForm({
         </div>
 
         {/* Controls */}
-        <div className="flex w-full items-center justify-end gap-2 px-3 pt-2">
-          {/* Tool buttons - animate from underneath model picker */}
+        <div className="flex w-full items-center gap-2 px-3 pt-2">
+          {/* Add button with consolidated controls dropdown */}
           {!isDisabled && (
-            <div className="flex-1 flex justify-end items-center gap-2">
-              <div className={`flex gap-2`}>
-                {/* File Upload Buttons */}
-                <button
-                  type="button"
-                  onClick={handleFilesUpload}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer border border-transparent"
-                  title="Upload multiple files"
-                >
-                  <PlusIcon className="w-4.5 h-4.5 stroke-2 text-neutral-500 dark:text-neutral-400" />
-                </button>
-                {/* Thinking Level Button */}
-                {modelSupportsThinkingLevels && (
-                  <>
-                    <ThinkButton
-                      mode="thinkingLevel"
-                      ref={thinkingLevelButtonRef}
-                      isVisible={modelSupportsThinkingLevels}
-                      currentLevel={thinkLevel}
-                      onLevelChange={setThinkingLevel}
-                      onDropdownToggle={handleThinkingLevelDropdownToggle}
-                    />
-                  </>
-                )}
-                {/* Think Button turn on and off */}
-                {supportsThinkToggling && !modelSupportsThinkingLevels && (
-                  <>
-                    <ThinkButton
-                      mode="think"
-                      ref={thinkButtonRef}
-                      isVisible={
-                        supportsThinkToggling && !modelSupportsThinkingLevels
-                      }
-                      isActive={thinkEnabled}
-                      onToggle={() => {
-                        // DeepSeek-v3 specific - thinking and web search are mutually exclusive
-                        if (supportsThinkToggling) {
-                          const enable = !thinkEnabled;
-                          setSettings({
-                            ThinkEnabled: enable,
-                            ...(enable ? { WebSearchEnabled: false } : {}),
-                          });
-                          return;
-                        }
-                        setSettings({ ThinkEnabled: !thinkEnabled });
-                      }}
-                    />
-                  </>
-                )}
-                <WebSearchButton
-                  ref={webSearchButtonRef}
-                  isVisible={supportsWebSearch && cloudDisabled === false}
-                  isActive={webSearchEnabled}
-                  onToggle={() => {
-                    if (!webSearchEnabled && !isAuthenticated) {
-                      setLoginPromptFeature("webSearch");
-                    }
-                    const enable = !webSearchEnabled;
-                    if (supportsThinkToggling && enable) {
-                      setSettings({
-                        WebSearchEnabled: true,
-                        ThinkEnabled: false,
-                      });
-                      return;
-                    }
-                    setSettings({ WebSearchEnabled: enable });
-                  }}
-                />
-              </div>
-            </div>
+            <ChatFormAddButton
+              isVisible={true}
+              modelSupportsThinkingLevels={modelSupportsThinkingLevels}
+              supportsThinkToggling={supportsThinkToggling}
+              thinkEnabled={thinkEnabled}
+              thinkLevel={thinkLevel}
+              onThinkLevelChange={(level: string) => setThinkingLevel(level as ThinkingLevel)}
+              onThinkToggle={() => {
+                if (supportsThinkToggling) {
+                  const enable = !thinkEnabled;
+                  setSettings({
+                    ThinkEnabled: enable,
+                  } as any);
+                  if (enable) {
+                    updateChatSettings(chatId, { webSearchEnabled: false });
+                  }
+                }
+              }}
+              webSearchEnabled={webSearchEnabled}
+              onWebSearchToggle={() => {
+                if (!webSearchEnabled && !isAuthenticated) {
+                  setLoginPromptFeature("webSearch");
+                }
+                const enable = !webSearchEnabled;
+                if (supportsThinkToggling && enable) {
+                  updateChatSettings(chatId, { webSearchEnabled: true });
+                  setSettings({ ThinkEnabled: false } as any);
+                  return;
+                }
+                updateChatSettings(chatId, { webSearchEnabled: enable });
+              }}
+              systemMessage={systemMessage}
+              onSystemMessageChange={setSystemMessage}
+              schemaActive={schemaActive}
+              schema={jsonSchema}
+              onSchemaChange={setJsonSchema}
+              onSchemaToggle={toggleSchema}
+              isCloudModel={selectedModel?.isCloud() ?? false}
+              onFileAttach={handleFilesReceived}
+              hasVisionCapability={hasVisionCapability}
+              hasAudioCapability={hasAudioCapability}
+            />
           )}
+
+          {/* Spacer pushes everything else to the right */}
+          <div className="flex-1" />
 
           {/* Model picker and submit button */}
           <div className="flex items-center gap-2 relative z-20">

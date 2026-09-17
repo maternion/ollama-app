@@ -12,6 +12,9 @@ import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { getModelUpstreamInfo } from "@/api";
 import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ModelTag } from "@/components/ModelTag";
+import { useSettings } from "@/hooks/useSettings";
+import { useRunningModels } from "@/hooks/useRunningModels";
 
 const stalenessCheckCache = new Map<string, number>();
 
@@ -229,6 +232,15 @@ export const ModelList = forwardRef(function ModelList(
 ): JSX.Element {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const { settings: displaySettings } = useSettings();
+  const showQuant = (displaySettings as any)?.showModelQuantization ?? false;
+  const showTags = (displaySettings as any)?.showModelTags ?? false;
+  const showLoadStatus =
+    (displaySettings as any)?.showModelLoadStatus ?? false;
+  const { data: runningData } = useRunningModels();
+  const loadedModelNames = new Set(
+    (runningData?.models || []).map((m: any) => m.name),
+  );
 
   useImperativeHandle(ref, () => ({
     scrollToSelectedModel: () => {
@@ -320,6 +332,31 @@ export const ModelList = forwardRef(function ModelList(
                 <span className="flex-1 text-left truncate min-w-0">
                   {model.model}
                 </span>
+                {(showQuant || showTags) && (model as any)?.details && (
+                  <div className="flex gap-1 items-center flex-shrink-0">
+                    {showQuant && (model as any).details?.quantization_level && (
+                      <ModelTag label={(model as any).details.quantization_level} variant="quant" />
+                    )}
+                    {showTags && (model as any).details?.parameter_size && (
+                      <ModelTag label={(model as any).details.parameter_size} variant="size" />
+                    )}
+                  </div>
+                )}
+                {showLoadStatus && (
+                  <span
+                    className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                      loadedModelNames.has(model.model) ||
+                      loadedModelNames.has(model.model + ":latest")
+                        ? "bg-green-500"
+                        : "bg-neutral-300 dark:bg-neutral-600"
+                    }`}
+                    title={
+                      loadedModelNames.has(model.model)
+                        ? "Loaded in memory"
+                        : "Not loaded"
+                    }
+                  />
+                )}
                 {model.isCloud() && (
                   <svg
                     className="h-3 fill-current text-neutral-500 dark:text-neutral-400"

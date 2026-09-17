@@ -42,14 +42,16 @@ export const TEXT_FILE_EXTENSIONS = [
 ];
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp"];
+export const AUDIO_EXTENSIONS = ["wav", "mp3", "ogg"];
 
 export interface FileValidationOptions {
   maxFileSize?: number; // in MB
   allowedExtensions?: string[];
   hasVisionCapability?: boolean;
   hasAudioCapability?: boolean;
-  pdfAsImages?: boolean;
   selectedModel?: Model | null;
+  /** When true, PDF files are rendered to per-page PNG images instead of being sent for text extraction */
+  pdfAsImages?: boolean;
   customValidator?: (file: File) => { valid: boolean; error?: string };
 }
 
@@ -64,7 +66,7 @@ export function validateFile(
 ): ValidationResult {
   const {
     maxFileSize = 10,
-    allowedExtensions = [...TEXT_FILE_EXTENSIONS, ...IMAGE_EXTENSIONS],
+    allowedExtensions = [...TEXT_FILE_EXTENSIONS, ...IMAGE_EXTENSIONS, ...AUDIO_EXTENSIONS],
     customValidator,
   } = options;
 
@@ -133,6 +135,38 @@ export async function processFiles(
 
     try {
       const fileBytes = await readFileAsBytes(file);
+
+      // PDF as images mode: render each page to a PNG so vision models can read it
+      const isPdf = file.name.toLowerCase().endsWith(".pdf");
+      if (options.pdfAsImages && isPdf) {
+        if (!options.hasVisionCapability) {
+          errors.push({
+            filename: file.name,
+            error: "PDF as images requires a vision model",
+          });
+          continue;
+        }
+        try {
+          const { pdfToImages } = await import("@/utils/pdfToImages");
+          const pages = await pdfToImages(fileBytes);
+          const baseName = file.name.replace(/\.pdf$/i, "");
+          for (const page of pages) {
+            validFiles.push({
+              filename: `${baseName}-page${page.page}.png`,
+              data: page.data,
+              type: "image/png",
+            });
+          }
+        } catch (err) {
+          console.error(`Error converting PDF ${file.name} to images:`, err);
+          errors.push({
+            filename: file.name,
+            error: "Failed to render PDF as images",
+          });
+        }
+        continue;
+      }
+
       validFiles.push({
         filename: file.name,
         data: fileBytes,
