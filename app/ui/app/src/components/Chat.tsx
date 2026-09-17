@@ -180,15 +180,19 @@ export default function Chat({ chatId }: { chatId: string }) {
   };
 
   // Stabilize so Message memo isn't defeated on every Chat re-render.
+  // Use messages.length as dep so identity is stable across streaming batches
+  // (content changes don't need a new callback; only structural changes do).
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const handleEditMessage = useCallback(
     (content: string, index: number) => {
       setEditingMessage({
         content,
         index,
-        originalMessage: messages[index],
+        originalMessage: messagesRef.current[index],
       });
     },
-    [messages],
+    [],
   );
 
   const handleCancelEdit = () => {

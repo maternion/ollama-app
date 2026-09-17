@@ -87,25 +87,21 @@ export const useMessageAutoscroll = ({
 
   // Calculate and set the spacer height based on container dimensions
   const updateSpacerHeight = useCallback(() => {
-    if (!containerRef.current) {
-      return;
-    }
+    if (!containerRef.current) return;
 
-    const containerHeight = containerRef.current.clientHeight;
-
-    // Find the last user message to calculate spacer for
-    const lastUserIndex = getLastUserMessageIndex();
-
-    if (lastUserIndex < 0) {
+    // When just viewing a chat (not streaming/pending), spacer is 0.
+    // Bail BEFORE any layout reads to avoid N forced reflows on every
+    // observer callback during mount. The spacer is only needed for the
+    // "pin user message to top while streaming" behavior.
+    if (!isActiveInteraction) {
       setSpacerHeight(0);
       return;
     }
 
-    const messageElements = containerRef.current.querySelectorAll(
-      "[data-message-index]",
-    ) as NodeListOf<HTMLElement>;
+    const containerHeight = containerRef.current.clientHeight;
+    const lastUserIndex = getLastUserMessageIndex();
 
-    if (!messageElements || messageElements.length === 0) {
+    if (lastUserIndex < 0) {
       setSpacerHeight(0);
       return;
     }
@@ -119,51 +115,34 @@ export const useMessageAutoscroll = ({
       return;
     }
 
-    const elementsAfter = Array.from(messageElements).filter((el) => {
+    // Only measure elements after the user message (not ALL messages).
+    const messageElements = containerRef.current.querySelectorAll(
+      "[data-message-index]",
+    ) as NodeListOf<HTMLElement>;
+
+    let contentHeightAfterTarget = 0;
+    for (let i = 0; i < messageElements.length; i++) {
+      const el = messageElements[i];
       const idx = Number(el.dataset.messageIndex);
-      return Number.isFinite(idx) && idx > lastUserIndex;
-    });
+      if (Number.isFinite(idx) && idx > lastUserIndex) {
+        contentHeightAfterTarget += el.offsetHeight;
+      }
+    }
 
-    const contentHeightAfterTarget = elementsAfter.reduce(
-      (sum, el) => sum + el.offsetHeight,
-      0,
-    );
-
-    // Calculate the spacer height needed to position the user message at the top
-    // Add extra space for assistant response area
     const targetMessageHeight = targetElement.offsetHeight;
 
-    // Calculate spacer to position the last user message at the top
-    // For new messages, we want them to appear at the top regardless of content after
-    // For large messages, we want to preserve the scroll-to-bottom behavior
-    // which shows part of the message and space for streaming response
     let baseHeight: number;
-
     if (contentHeightAfterTarget === 0) {
-      // No content after the user message (new message case)
-      // Position it at the top with some padding
       baseHeight = Math.max(0, containerHeight - targetMessageHeight);
     } else {
-      // Content exists after the user message
-      // Calculate spacer to position user message at top
       baseHeight = Math.max(
         0,
         containerHeight - contentHeightAfterTarget - targetMessageHeight,
       );
     }
 
-    // Only apply spacer height when actively interacting (streaming or pending new message)
-    // When just viewing a chat, don't add extra space
-    if (!isActiveInteraction) {
-      setSpacerHeight(0);
-      return;
-    }
-
-    // Add extra space for assistant response only when streaming
     const extraSpaceForAssistant = isStreaming ? containerHeight * 0.4 : 0;
-    const calculatedHeight = baseHeight + extraSpaceForAssistant;
-
-    setSpacerHeight(calculatedHeight);
+    setSpacerHeight(baseHeight + extraSpaceForAssistant);
   }, [getLastUserMessageIndex, isStreaming, isActiveInteraction]);
 
   // Keep a stable ref so the observer effect can call the latest version
@@ -272,18 +251,17 @@ export const useMessageAutoscroll = ({
       }
     });
 
-    // Also use MutationObserver for immediate attribute changes
+    // Use MutationObserver for expand/collapse toggles on message wrappers only.
+    // NOT subtree — observing every child's class/style changes fires on every
+    // React mount and causes O(N²) updateSpacerHeight calls. Only observe the
+    // direct message wrapper divs for open/data-expanded attribute changes.
     const mutationObserver = new MutationObserver((mutations) => {
-      // Check if any mutations are related to expanding/collapsing
       const hasToggle = mutations.some(
         (mutation) =>
           mutation.type === "attributes" &&
-          (mutation.attributeName === "class" ||
-            mutation.attributeName === "style" ||
-            mutation.attributeName === "open" ||
+          (mutation.attributeName === "open" ||
             mutation.attributeName === "data-expanded"),
       );
-
       if (hasToggle) {
         immediateUpdate = true;
         updateSpacerHeightRef.current();
@@ -294,8 +272,7 @@ export const useMessageAutoscroll = ({
     resizeObserver.observe(containerRef.current);
     mutationObserver.observe(containerRef.current, {
       attributes: true,
-      subtree: true,
-      attributeFilter: ["class", "style", "open", "data-expanded"],
+      attributeFilter: ["open", "data-expanded"],
     });
 
     // Observe all message elements for size changes

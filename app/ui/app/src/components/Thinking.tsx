@@ -18,7 +18,11 @@ export default function Thinking({
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const activelyThinking = startTime && !endTime;
-  const finishedThinking = startTime && endTime;
+  // Treat thinking as finished if we have an endTime, OR if we're not actively
+  // thinking and have thinking content (covers saved chats where endTime
+  // might not round-trip). This ensures the render-skip guard fires on saved
+  // chats so we don't parse thinking markdown on open.
+  const finishedThinking = (startTime && endTime) || (!activelyThinking && !!thinking);
 
   // Auto-collapse when thinking is done (only if user hasn't manually interacted)
   useEffect(() => {
@@ -137,7 +141,9 @@ export default function Thinking({
             : finishedThinking
               ? (() => {
                   const thinkingTime =
-                    (endTime.getTime() - startTime.getTime()) / 1000;
+                    endTime && startTime
+                      ? (endTime.getTime() - startTime.getTime()) / 1000
+                      : 0;
                   return thinkingTime < 2
                     ? "Thought for a moment"
                     : `Thought for ${thinkingTime.toFixed(1)} seconds`;
