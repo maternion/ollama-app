@@ -34,20 +34,24 @@ export default function Thinking({
     }
   }, [activelyThinking]);
 
-  // Measure content height for animations
+  // Measure content height for animations.
+  // Attach the ResizeObserver once on mount and let it report size changes
+  // autonomously — recreating it on every `thinking` change (every token)
+  // was O(N) allocations/sec and defeated the observer's own change detection.
   useEffect(() => {
-    if (contentRef.current) {
-      const resizeObserver = new ResizeObserver(() => {
-        if (contentRef.current) {
-          setContentHeight(contentRef.current.scrollHeight);
-        }
-      });
-      resizeObserver.observe(contentRef.current);
-      return () => resizeObserver.disconnect();
-    }
-  }, [thinking]);
+    if (!contentRef.current) return;
+    const resizeObserver = new ResizeObserver(() => {
+      if (contentRef.current) {
+        setContentHeight(contentRef.current.scrollHeight);
+      }
+    });
+    resizeObserver.observe(contentRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
 
-  // Position content to show bottom when collapsed
+  // Position content to show bottom when collapsed. Re-run only when the
+  // collapse state flips or the active/finished thinking phase changes,
+  // not on every token — the ResizeObserver above handles size tracking.
   useEffect(() => {
     if (isCollapsed && contentRef.current && wrapperRef.current) {
       requestAnimationFrame(() => {
@@ -68,14 +72,14 @@ export default function Thinking({
       contentRef.current.style.transform = "translateY(0)";
       setHasOverflow(false);
     }
-  }, [thinking, isCollapsed]);
+  }, [isCollapsed, activelyThinking, finishedThinking]);
 
   useEffect(() => {
     if (activelyThinking && wrapperRef.current && !isCollapsed) {
       // When expanded and actively thinking, scroll to bottom
       wrapperRef.current.scrollTop = wrapperRef.current.scrollHeight;
     }
-  }, [thinking, activelyThinking, isCollapsed]);
+  }, [activelyThinking, isCollapsed]);
 
   const handleToggle = () => {
     setIsCollapsed(!isCollapsed);
@@ -156,11 +160,24 @@ export default function Thinking({
           ref={contentRef}
           className="transition-transform duration-300 opacity-75 select-text"
         >
-          <StreamingMarkdownContent
-            content={thinking}
-            isStreaming={activelyThinking}
-            size="sm"
-          />
+          {/* Skip the O(N) Streamdown markdown re-parse when the thinking
+              block is collapsed and finished — the user can't see it, and
+              re-parsing the full thinking text on every parent render is
+              the dominant CPU cost during long thinking traces. Render the
+              raw text (cheap) and re-mount StreamingMarkdownContent on
+              expand. During active thinking we still render markdown so the
+              live-updating reasoning is readable. */}
+          {isCollapsed && finishedThinking ? (
+            <pre className="text-xs whitespace-pre-wrap break-words font-sans opacity-50">
+              {thinking}
+            </pre>
+          ) : (
+            <StreamingMarkdownContent
+              content={thinking}
+              isStreaming={activelyThinking}
+              size="sm"
+            />
+          )}
         </div>
 
         {/* Gradient overlay for fade effect when collapsed and scrolled */}

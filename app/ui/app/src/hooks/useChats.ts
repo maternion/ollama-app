@@ -9,6 +9,7 @@ import { useRefetchModels } from "./useModels";
 import { useStreamingContext } from "@/contexts/StreamingContext";
 import { getModelCapabilities } from "@/api";
 import { useCloudStatus } from "./useCloudStatus";
+import { isLinuxPlatform } from "@/lib/platform";
 
 export const useChats = () => {
   return useQuery({
@@ -346,11 +347,18 @@ export const useSendMessage = (chatId: string) => {
       });
 
       // Create batcher for streaming updates with smoother intervals, prevents state update depth being exceeded
-      // and allows for smoother updates at high frame rates
+      // and allows for smoother updates at high frame rates.
+      // On Linux (WebKitGTK/JavaScriptCore) the upstream 4ms (~250fps) cadence
+      // saturates the main thread: each flush re-parses the full accumulated
+      // content through Streamdown (O(N) per flush => O(N²) over a stream),
+      // and JSC + the WebKitGTK compositor can't keep up, so the UI freezes.
+      // Throttle to ~30fps on Linux; Mac/Windows keep 250fps (their V8/
+      // WKWebView engines absorb the cost).
+      const streamBatchInterval = isLinuxPlatform() ? 33 : 4;
       let batcher = createQueryBatcher<{ chat: Chat }>(
         queryClient,
         ["chat", currentChatId],
-        { batchInterval: 4, immediateFirst: true }, // ~250fps for smoother updates
+        { batchInterval: streamBatchInterval, immediateFirst: true },
       );
 
       let streamStartTime: number | null = null;
@@ -801,7 +809,7 @@ export const useSendMessage = (chatId: string) => {
             batcher = createQueryBatcher<{ chat: Chat }>(
               queryClient,
               ["chat", currentChatId],
-              { batchInterval: 4, immediateFirst: true },
+              { batchInterval: isLinuxPlatform() ? 33 : 4, immediateFirst: true },
             );
 
             // Create initial chat data for the new chat

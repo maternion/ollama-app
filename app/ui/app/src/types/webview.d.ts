@@ -176,7 +176,7 @@ declare global {
     menu: (items: MenuItem[]) => Promise<string | null>;
     OLLAMA_TOOLS?: boolean;
     OLLAMA_WEBSEARCH?: boolean;
-    OLLAMA_PLATFORM?: "darwin" | "windows";
+    OLLAMA_PLATFORM?: "darwin" | "windows" | "linux";
   }
 
   namespace JSX {
