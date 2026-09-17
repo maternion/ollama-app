@@ -160,18 +160,7 @@ export default function Thinking({
           ref={contentRef}
           className="transition-transform duration-300 opacity-75 select-text"
         >
-          {/* Skip the O(N) Streamdown markdown re-parse when the thinking
-              block is collapsed and finished — the user can't see it, and
-              re-parsing the full thinking text on every parent render is
-              the dominant CPU cost during long thinking traces. Render the
-              raw text (cheap) and re-mount StreamingMarkdownContent on
-              expand. During active thinking we still render markdown so the
-              live-updating reasoning is readable. */}
-          {isCollapsed && finishedThinking ? (
-            <pre className="text-xs whitespace-pre-wrap break-words font-sans opacity-50">
-              {thinking}
-            </pre>
-          ) : (
+          {!(isCollapsed && finishedThinking) && (
             <StreamingMarkdownContent
               content={thinking}
               isStreaming={activelyThinking}
